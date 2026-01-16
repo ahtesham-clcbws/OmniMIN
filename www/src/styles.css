@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
-/* 
-   Pure Native SQL Manager - Theme Engine CSS 
-   Relies on variables set by theme.js on :root
-*/
+@theme {
+  --color-accent: #3b82f6; 
+  --color-accent-glow: rgba(59, 130, 246, 0.4);
+}
 
 :root {
     /* Default Dark Mode Fallback (overridden by JS) */
@@ -55,15 +55,7 @@
     --toolbar-border: rgba(0,0,0,0.1);
 }
 
-/* Base Reset */
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-    /* Smooth theme transitions (reduced for snap feel) */
-    transition: background-color 0.1s, color 0.1s, border-color 0.1s;
-    user-select: none; /* Make it feel like an app */
-}
+/* Base Reset Removed - Handled by Tailwind Preflight */
 
 /* Allow selection in data areas */
 input, textarea, [contenteditable="true"], .pma-grid td {
@@ -86,22 +78,7 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-/* Utility Classes */
-.hidden { display: none !important; }
-.flex { display: flex; }
-.flex-col { flex-direction: column; }
-.items-center { align-items: center; }
-.justify-between { justify-content: space-between; }
-.w-full { width: 100% !important; }
-.gap-1 { gap: var(--spacing-xs); }
-.gap-2 { gap: var(--spacing-sm); }
-.gap-3 { gap: var(--spacing-md); }
-.p-2 { padding: var(--spacing-sm); }
-.text-xs { font-size: 0.75rem; }
-.text-sm { font-size: 0.875rem; }
-.font-bold { font-weight: 600; }
-.opacity-50 { opacity: 0.5; }
-.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Utility Classes Removed - Using Tailwind */
 
 /* Layout */
 /* --- Base App Layout --- */
@@ -214,71 +191,7 @@ body {
     font-weight: 700;
 }
 
-/* Dashboard View */
-.main-view-container {
-    padding: 2px;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: var(--bg-canvas);
-    min-height: 0;
-}
-
-.view-pane {
-    height: 100%;
-    width: 100%;
-    padding: 32px 48px; /* More compact padding */
-    overflow-y: auto;
-}
-
-.dashboard-title {
-    font-size: 2.2rem; /* Smaller title */
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    margin-bottom: 24px;
-    color: var(--text-main);
-}
-
-.dashboard-toolbar {
-    display: flex;
-    flex-direction: row; /* Single row */
-    align-items: center;
-    gap: 12px;
-    max-width: 100%;
-    margin-bottom: 10px; /* Reduced space between toolbar and cards */
-}
-
-.search-container {
-    position: relative;
-    flex: 1;
-    max-width: 400px;
-}
-
-.search-icon {
-    position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    opacity: 0.4;
-}
-
-.search-container input {
-    width: 100%;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-dim);
-    padding: 10px 12px 10px 38px;
-    border-radius: 10px;
-    font-size: 0.95rem;
-    color: var(--text-main);
-    outline: none;
-    transition: all 0.2s;
-}
-
-.search-container input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(68, 137, 244, 0.1);
-}
+/* Search Container removed - use Tailwind .relative .flex .bg-surface */
 
 @layer components {
     .btn-primary {
@@ -638,40 +551,9 @@ body {
 }
 .view-container.flex { display: flex; } /* Override display none */
 
-/* Dashboard Grid */
-#server-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: var(--spacing-lg);
-    padding-top: var(--spacing-lg);
-}
+/* Server Cards removed - use Tailwind Grid */
 
-.server-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: var(--spacing-lg);
-    cursor: pointer;
-    position: relative;
-    overflow: hidden;
-}
-.server-card:hover {
-    border-color: var(--accent);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-/* Data Table */
-.data-table-wrapper {
-    flex: 1;
-    overflow: auto;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--bg-secondary);
-}
-
-.text-right { text-align: right !important; }
-.text-center { text-align: center !important; }
+/* Data Table Wrapper removed - use Tailwind */
 
 /* PMA Style Grid */
 .pma-grid-container {

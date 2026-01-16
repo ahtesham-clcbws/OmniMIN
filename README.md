@@ -4,8 +4,7 @@
 
 LuminaSQL is a high-performance, native (Rust) database management tool with a modern React UI. Designed to be a lightweight, ultra-fast alternative to phpMyAdmin, TablePlus, and DBeaver.
 
-<!-- ![UI Preview](ProjectInfo/preview.png) -->
-SCRENSHOTS COMMING SOON
+![UI Preview](preview.png)
 
 ## 💡 Why LuminaSQL?
 
