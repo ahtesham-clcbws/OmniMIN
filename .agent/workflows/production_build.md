@@ -7,7 +7,18 @@ description: Workflow for building the production application (Windows)
 
 Use this workflow to generate the release binaries for OmniMIN.
 
-## 1. Prerequisites
+## 0. Automated Release (GitHub Actions)
+We use **GitHub Actions** to automate the building of binaries for Windows, macOS, and Linux.
+
+1.  **Tag the Version**: Create a new git tag for the release version (e.g., `v0.1.0`).
+    ```bash
+    git tag v0.1.0
+    git push origin v0.1.0
+    ```
+2.  **Monitor Build**: Go to the **Actions** tab in your GitHub repository and watch the `Release` workflow.
+3.  **Publish**: Once verified, go to **Releases**, edit the drafted release, and click **Publish**.
+
+## 1. Prerequisites (Manual Build)
 - Ensure all tests pass (if applicable).
 - Update the version number in:
     - `package.json`
