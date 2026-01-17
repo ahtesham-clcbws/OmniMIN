@@ -21,6 +21,7 @@ interface AppState {
   fontFamily: string;
   view: 'dashboard' | 'browser' | 'settings' | 'query' | 'structure' | 'designer' | 'routines' | 'export' | 'import';
   dashboardViewMode: 'grid' | 'list';
+  tableViewMode: 'grid' | 'list';
   showSettings: boolean;
   showSystemDbs: boolean;
   
@@ -49,11 +50,25 @@ interface AppState {
   setView: (view: AppState['view']) => void;
   setShowSettings: (show: boolean) => void;
   setDashboardViewMode: (mode: 'grid' | 'list') => void;
+  setTableViewMode: (mode: 'grid' | 'list') => void;
   setShowSystemDbs: (show: boolean) => void;
   
   // UI State
   showHelp: boolean;
   setShowHelp: (show: boolean) => void;
+
+  // UI Modals
+  showCreateDbModal: boolean;
+  setShowCreateDbModal: (show: boolean) => void;
+  showEditServerModal: boolean;
+  setShowEditServerModal: (show: boolean) => void;
+  showCreateTableModal: boolean;
+  setShowCreateTableModal: (show: boolean) => void;
+  showUsersModal: boolean;
+  setIsUsersModalOpen: (show: boolean) => void;
+
+  dashboardSearchTerm: string;
+  setDashboardSearchTerm: (term: string) => void;
 
   setCurrentServer: (server: ServerConfig | null) => void;
   setCurrentDb: (db: string | null) => void;
@@ -68,6 +83,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       fontFamily: 'sans',
       view: 'dashboard',
       dashboardViewMode: 'grid',
+      tableViewMode: 'list',
       showSettings: false,
       showSystemDbs: false,
       currentServer: null,
@@ -83,6 +99,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           density: prefs.density as any,
           fontFamily: prefs.fontFamily,
           dashboardViewMode: prefs.dashboardViewMode as any,
+          tableViewMode: prefs.tableViewMode ?? 'list' as any,
           showSystemDbs: prefs.showSystemDbs,
           queryHistory: prefs.queryHistory.map((q: any) => ({ ...q, timestamp: new Date(q.timestamp) })),
       }),
@@ -94,10 +111,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       setView: (view) => set({ view }),
       setShowSettings: (show) => set({ showSettings: show }),
       setDashboardViewMode: (mode) => set({ dashboardViewMode: mode }),
+      setTableViewMode: (mode) => set({ tableViewMode: mode }),
       setShowSystemDbs: (show) => set({ showSystemDbs: show }),
       
       showHelp: false,
       setShowHelp: (show) => set({ showHelp: show }),
+
+      showCreateDbModal: false,
+      setShowCreateDbModal: (show) => set({ showCreateDbModal: show }),
+      showEditServerModal: false,
+      setShowEditServerModal: (show) => set({ showEditServerModal: show }),
+      showCreateTableModal: false,
+      setShowCreateTableModal: (show) => set({ showCreateTableModal: show }),
+
+      showUsersModal: false,
+      setIsUsersModalOpen: (show: boolean) => set({ showUsersModal: show }),
+
+      dashboardSearchTerm: '',
+      setDashboardSearchTerm: (term) => set({ dashboardSearchTerm: term }),
 
       setCurrentServer: (currentServer) => set({ currentServer }),
       setCurrentDb: (currentDb) => set({ currentDb }),

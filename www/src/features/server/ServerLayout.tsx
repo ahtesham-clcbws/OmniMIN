@@ -1,22 +1,28 @@
 import React from 'react';
-import { ServerMonitor } from './ServerMonitor';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { dbApi } from '@/api/db';
-import { useNavigate } from 'react-router-dom';
-import { 
-    Activity, Clock, User, Database as DBIcon, Search, HardDrive, 
-    LayoutGrid, List, Trash2, Plus, Settings as SettingsIcon, MoreHorizontal, 
-    RefreshCcw, Zap, Terminal, Info, ChevronRight, Key
-} from 'lucide-react';
-import { AddServerModal } from '../dashboard/AddServerModal';
-import { CreateDatabaseModal } from './CreateDatabaseModal';
+import { Outlet, useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/stores/useAppStore';
+import { 
+    Activity, Search, Plus, Settings, MoreHorizontal, 
+    LayoutGrid, List as ListIcon, RefreshCcw, Zap, Terminal, Info, User, Key, ChevronRight,
+    Database as DBIcon
+} from 'lucide-react';
+import { Breadcrumbs } from '@/components/Navigation/Breadcrumbs';
 import { Button } from '@/components/ui/button';
-import { Modal } from '@/components/ui/Modal';
-import { useNotificationStore } from '@/stores/useNotificationStore';
+import { 
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
+} from "@/components/ui/select";
 import { cn } from '@/lib/utils';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { dbApi } from '@/api/db';
+import { CreateDatabaseModal } from './CreateDatabaseModal';
+import { CreateTableModal } from '../database/CreateTableModal';
+import { AddServerModal } from '../dashboard/AddServerModal';
+import { useNotificationStore } from '@/stores/useNotificationStore';
+import { Modal } from '@/components/ui/Modal';
 import { UsersManagementModal } from './UsersManagementModal';
 import { PasswordRotationModal } from './PasswordRotationModal';
+
+// --- Extra Modals (copied/refined from ServerOverview) ---
 
 function ProcessListModal({ onClose }: { onClose: () => void }) {
     const { data: processes, isLoading, refetch } = useQuery({
@@ -26,7 +32,7 @@ function ProcessListModal({ onClose }: { onClose: () => void }) {
     });
 
     const killMutation = useMutation({
-        mutationFn: (id: number) => dbApi.executeQuery(`KILL ${id}`),
+        mutationFn: (id: number) => dbApi.executeQuery('', `KILL ${id}`),
         onSuccess: () => {
             refetch();
         }
@@ -90,7 +96,7 @@ function VariablesModal({ type, onClose }: { type: 'status' | 'variables', onClo
     const { data: variables, isLoading } = useQuery({
         queryKey: [type, filter],
         queryFn: () => type === 'status' ? dbApi.getStatusVariables(filter) : dbApi.getServerVariables(filter),
-        refetchInterval: type === 'status' ? 10000 : false // Status variables might update
+        refetchInterval: type === 'status' ? 10000 : false 
     });
 
     const title = type === 'status' ? 'Global Status Variables' : 'System Variables';
@@ -144,6 +150,7 @@ function VariablesModal({ type, onClose }: { type: 'status' | 'variables', onClo
     );
 }
 
+// --- Subcomponents for Menu (copied from ServerOverview) ---
 function ServerActionMenu({ onClose, onAction }: { onClose: () => void, onAction: (action: string) => void }) {
     const { showSystemDbs, setShowSystemDbs } = useAppStore();
 
@@ -184,124 +191,73 @@ function ServerActionMenu({ onClose, onAction }: { onClose: () => void, onAction
     );
 }
 
-
-export function ServerOverview() {
-    const { 
-        currentServer, setCurrentDb, setView, 
-        dashboardViewMode, setDashboardViewMode,
-        showSystemDbs, setShowSystemDbs
-    } = useAppStore();
-    const { show: showNotification } = useNotificationStore();
+export function ServerLayout() {
+    const { serverId, dbName } = useParams();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { show: showNotification } = useNotificationStore();
+    const { 
+        currentServer, 
+        setShowCreateDbModal, showCreateDbModal, 
+        showEditServerModal, setShowEditServerModal,
+        dashboardViewMode, setDashboardViewMode,
+        tableViewMode, setTableViewMode,
+        dashboardSearchTerm, setDashboardSearchTerm,
+        showSystemDbs, setShowSystemDbs,
+        showCreateTableModal, setShowCreateTableModal
+    } = useAppStore();
 
-    // Helper: Format Bytes
-    const formatBytes = (bytes?: number) => {
-        if (bytes === undefined || bytes === null) return '0 B';
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    };
+    const isDashboard = !dbName;
 
-    // 1. Fetch Server Stats
-    const { data: statsData, error: statsError } = useQuery({
+    // --- Modal States ---
+    const [showProcessList, setShowProcessList] = React.useState(false);
+    const [showVariablesModal, setShowVariablesModal] = React.useState<'status' | 'variables' | null>(null);
+    const [showUsersModal, setShowUsersModal] = React.useState(false);
+    const [showRotationModal, setShowRotationModal] = React.useState(false);
+
+    // --- Data Fetching (Redundant but needed for header stats) ---
+    const { data: statsData } = useQuery({
         queryKey: ['serverStats', currentServer?.id],
         queryFn: () => dbApi.getServerStats(),
         enabled: !!currentServer
     });
-
-    // 2. Fetch Databases
-    const { data: databases, isLoading: loadingDbs, isFetching: fetchingDbs } = useQuery({
-        queryKey: ['databases', currentServer?.id],
+    
+    const { data: databases } = useQuery({
+        queryKey: ['databases', serverId],
         queryFn: () => dbApi.getDatabases(),
-        enabled: !!currentServer
+        enabled: !!serverId
     });
 
+    // --- Stats Parsing ---
     const stats = statsData?.rows?.[0] || [];
     const version = stats[0] || 'Unknown';
-    const uptimeValue = stats[1]; // Might be string or number
+    const uptimeValue = stats[1]; 
     const uptimeSeconds = typeof uptimeValue === 'number' ? uptimeValue : parseInt(uptimeValue || '0');
     const uptimeHours = Math.floor(uptimeSeconds / 3600);
     const uptime = uptimeHours > 0 ? `${uptimeHours}h` : `${Math.floor(uptimeSeconds / 60)}m`;
     const user = stats[2] || 'Unknown';
 
-    const sortedDbs = React.useMemo(() => {
-        if (!databases) return [];
-        const systemDbs = ['information_schema', 'mysql', 'performance_schema', 'sys'];
-        
-        let filtered = [...databases];
-        
-        // Filter system databases if not enabled
-        if (!showSystemDbs) {
-            filtered = filtered.filter(db => !systemDbs.includes(db.name.toLowerCase()));
-        }
-
-        // Sort alphabetically (A-Z)
-        return filtered.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-    }, [databases, showSystemDbs]);
-
-    const DatabaseSkeleton = () => (
-        <div className="glass-panel p-4 flex flex-col gap-3 relative animate-pulse">
-            <div className="flex justify-between items-start">
-                <div className="w-8 h-8 rounded bg-white/5" />
-            </div>
-            <div className="space-y-2">
-                <div className="h-5 w-3/4 bg-white/5 rounded" />
-                <div className="h-3 w-1/2 bg-white/5 rounded" />
-                <div className="h-3 w-1/3 bg-white/5 rounded" />
-            </div>
-        </div>
-    );
-
-    const handleDbClick = (dbName: string) => {
-        if (currentServer) {
-            navigate(`/server/${currentServer.id}/${dbName}`);
-        }
-    };
-
-    const handleDropDb = async (e: React.MouseEvent, dbName: string) => {
-        e.stopPropagation();
-        if (confirm(`Are you sure you want to DROP the database '${dbName}'? This cannot be undone.`)) {
-            try {
-                await dbApi.dropDatabase(dbName);
-                queryClient.invalidateQueries({ queryKey: ['databases'] });
-            } catch (err) {
-                console.error("Failed to drop database", err);
-                showNotification("Failed to drop database: " + err, 'error');
-            }
-        }
-    };
+    // --- Actions ---
+    const [showActionMenu, setShowActionMenu] = React.useState(false);
 
     const flushMutation = useMutation({
         mutationFn: () => dbApi.executeQuery('FLUSH PRIVILEGES'),
-        onSuccess: () => {
-            showNotification('Privileges flushed successfully!', 'success');
-        },
-        onError: (err) => {
-            showNotification('Failed to flush privileges: ' + err, 'error');
-        }
+        onSuccess: () => showNotification('Privileges flushed successfully!', 'success'),
+        onError: (err) => showNotification('Failed to flush privileges: ' + err, 'error')
     });
 
-    const [showCreateDbModal, setShowCreateDbModal] = React.useState(false);
-    const [showEditServerModal, setShowEditServerModal] = React.useState(false);
-    const [showProcessList, setShowProcessList] = React.useState(false);
-    const [showVariablesModal, setShowVariablesModal] = React.useState<'status' | 'variables' | null>(null);
-    const [showActionMenu, setShowActionMenu] = React.useState(false);
-    const [showUsersModal, setShowUsersModal] = React.useState(false);
-    const [showRotationModal, setShowRotationModal] = React.useState(false);
-    const [search, setSearch] = React.useState('');
-
-    const filteredDbs = React.useMemo(() => {
-        if (!databases) return [];
-        return sortedDbs.filter(db => db.name.toLowerCase().includes(search.toLowerCase()));
-    }, [sortedDbs, search]);
+    const handleDbChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const newDb = e.target.value;
+        if (newDb && newDb !== dbName) {
+            navigate(`/server/${serverId}/${newDb}`);
+        }
+    };
 
     return (
-        <div className="p-8 h-full flex flex-col overflow-hidden bg-main">
-            {/* Header Area */}
-            <header className="mb-8 flex-shrink-0 flex items-end justify-between">
+        <div className="h-full flex flex-col bg-main text-text-main overflow-hidden">
+            
+            {/* --- PERSISTENT BIG HEADER (Original Design) --- */}
+            <header className="p-8 pb-4 flex-shrink-0 flex items-end justify-between border-b border-border/40 bg-main">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
                         <Activity className="text-primary" size={32} />
@@ -314,12 +270,6 @@ export function ServerOverview() {
                                 <span className="text-[10px] uppercase font-bold opacity-60 text-primary">uptime</span>
                             </div>
                         </div>
-                        {fetchingDbs && !loadingDbs && (
-                            <div className="flex items-center gap-2 text-[10px] text-primary/60 bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20 animate-in fade-in duration-300 ml-2">
-                                <div className="w-1 h-1 bg-primary rounded-full animate-pulse" />
-                                Syncing...
-                            </div>
-                        )}
                     </div>
                     <p className="text-text-muted text-xs opacity-70 flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-text-main">
@@ -333,38 +283,66 @@ export function ServerOverview() {
                         </span>
                     </p>
                 </div>
-                
+
                 <div className="flex items-center gap-3">
-                    {/* Actions Toolbar */}
+                    {/* Create Button */}
                     <div className="flex items-center gap-2 pr-3 border-r border-border/20">
                         <Button 
                             size="sm" 
                             className="h-10 gap-2 px-4 text-xs font-bold shadow-sm"
-                            onClick={() => setShowCreateDbModal(true)}
+                            onClick={() => isDashboard ? setShowCreateDbModal(true) : setShowCreateTableModal(true)}
                         >
-                            <Plus size={16} /> Create
+                            <Plus size={16} /> 
+                            {isDashboard ? 'Create Database' : 'Create Table'}
                         </Button>
                     </div>
 
-                    {/* Search and Toggle Group */}
+                    {/* Context Switcher: Search (Dashboard) OR Dropdown (DB View) */}
                     <div className="flex items-center gap-3">
-                        <div className="relative group">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-40 group-focus-within:opacity-70 group-focus-within:text-primary w-4 h-4 transition-all pointer-events-none" />
-                            <input 
-                                type="text" 
-                                placeholder="Search databases..." 
-                                className="bg-surface/50 border border-border rounded-lg pl-10 pr-4 h-10 w-64 text-xs outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-text-muted/30 hover:border-border/60" 
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                            />
-                        </div>
+                        {isDashboard ? (
+                            <div className="relative group">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-40 group-focus-within:opacity-70 group-focus-within:text-primary w-4 h-4 transition-all pointer-events-none" />
+                                <input 
+                                    type="text" 
+                                    placeholder="Search databases..." 
+                                    className="bg-surface/50 border border-border rounded-lg pl-10 pr-4 h-10 w-64 text-xs outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-text-muted/30 hover:border-border/60" 
+                                    value={dashboardSearchTerm}
+                                    onChange={(e) => setDashboardSearchTerm(e.target.value)}
+                                />
+                            </div>
+                        ) : (
+                            <div className="relative">
+                                <Select value={dbName || ''} onValueChange={(val) => {
+                                    if (val && val !== dbName) {
+                                        navigate(`/server/${serverId}/${val}`);
+                                    }
+                                }}>
+                                    <SelectTrigger className="w-64 h-10 bg-surface/50 border-border text-xs font-bold">
+                                        <div className="pl-5 truncate text-left">
+                                            <SelectValue placeholder="Select Database" />
+                                        </div>
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-[450px]">
+                                        {databases?.map(db => (
+                                            <SelectItem key={db.name} value={db.name} className="text-xs font-medium cursor-pointer">
+                                                <div className="flex items-center gap-2">
+                                                    <DBIcon className="w-3.5 h-3.5 opacity-50" />
+                                                    {db.name}
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
 
+                        {/* View Toggles (Only meaningful in Dashboard, maybe reuse for Tables later) */}
                         <div className="flex bg-surface/50 border border-border rounded-lg p-1 h-10 gap-1 shadow-inner shadow-black/20">
                             <button 
-                                onClick={() => setDashboardViewMode('grid')}
+                                onClick={() => isDashboard ? setDashboardViewMode('grid') : setTableViewMode('grid')}
                                 className={cn(
                                     "px-3 flex items-center justify-center rounded transition-all",
-                                    dashboardViewMode === 'grid' 
+                                    (isDashboard ? dashboardViewMode : tableViewMode) === 'grid' 
                                         ? "bg-primary! text-white shadow-sm" 
                                         : "text-text-muted hover:text-text-main hover:bg-white/5"
                                 )}
@@ -373,30 +351,34 @@ export function ServerOverview() {
                                 <LayoutGrid size={16} />
                             </button>
                             <button 
-                                onClick={() => setDashboardViewMode('list')}
+                                onClick={() => isDashboard ? setDashboardViewMode('list') : setTableViewMode('list')}
                                 className={cn(
                                     "px-3 flex items-center justify-center rounded transition-all",
-                                    dashboardViewMode === 'list' 
+                                    (isDashboard ? dashboardViewMode : tableViewMode) === 'list' 
                                         ? "bg-primary! text-white shadow-sm" 
                                         : "text-text-muted hover:text-text-main hover:bg-white/5"
                                 )}
                                 title="List View"
                             >
-                                <List size={16} />
+                                <ListIcon size={16} />
                             </button>
                         </div>
                     </div>
 
+                    {/* Settings & More Actions */}
                     <div className="flex items-center gap-2 pl-1">
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => setShowEditServerModal(true)}
-                            className="h-10 shrink-0 p-1!"
-                            title="Server Settings"
-                        >
-                            <SettingsIcon size={18} />
-                        </Button>
+                        {isDashboard && (
+                             <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => setShowEditServerModal(true)}
+                                className="h-10 shrink-0 p-1!"
+                                title="Server Settings"
+                            >
+                                <Settings size={18} />
+                            </Button>
+                        )}
+                       
                         <div className="relative">
                             <Button 
                                 variant="outline"
@@ -414,25 +396,23 @@ export function ServerOverview() {
                                 <ServerActionMenu 
                                     onClose={() => setShowActionMenu(false)} 
                                     onAction={(action) => {
-                                        if (action === 'processes') setShowProcessList(true);
-                                        if (action === 'status') setShowVariablesModal('status');
-                                        if (action === 'variables') setShowVariablesModal('variables');
-                                        if (action === 'refresh') queryClient.invalidateQueries({ queryKey: ['serverStats'] });
+                                        if (action === 'refresh') {
+                                            queryClient.invalidateQueries({ queryKey: ['serverStats'] });
+                                            queryClient.invalidateQueries({ queryKey: ['databases'] });
+                                        }
                                         if (action === 'flush') flushMutation.mutate();
+                                        if (action === 'toggle_system') setShowSystemDbs(!showSystemDbs);
                                         if (action === 'flush_logs') {
-                                            dbApi.executeQuery('FLUSH LOGS')
-                                                .then(() => showNotification('Logs flushed successfully', 'success'))
+                                             dbApi.executeQuery('', 'FLUSH LOGS')
+                                                .then(() => showNotification('Logs & Cache flushed successfully', 'success'))
                                                 .catch(err => showNotification('Failed: ' + err, 'error'));
+                                             dbApi.executeQuery('', 'FLUSH HOSTS').catch(() => {});
                                         }
-                                        if (action === 'toggle_system') {
-                                            setShowSystemDbs(!showSystemDbs);
-                                        }
-                                        if (action === 'users') {
-                                            setShowUsersModal(true);
-                                        }
-                                        if (action === 'rotate_pass') {
-                                            setShowRotationModal(true);
-                                        }
+                                        if (action === 'processes') setShowProcessList(true);
+                                        if (action === 'variables') setShowVariablesModal('variables');
+                                        if (action === 'status') setShowVariablesModal('status');
+                                        if (action === 'users') setShowUsersModal(true);
+                                        if (action === 'rotate_pass') setShowRotationModal(true);
                                     }} 
                                 />
                             )}
@@ -441,122 +421,15 @@ export function ServerOverview() {
                 </div>
             </header>
 
-
-            {/* Databases Section */}
-            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-
-                <div className="flex-1 min-h-0 flex flex-col">
-                    {loadingDbs ? (
-                        /* SKELETON LOADING STATE */
-                        <div className={cn(
-                            "flex-1 overflow-y-auto pr-2 custom-scrollbar",
-                            dashboardViewMode === 'grid' 
-                                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-6"
-                                : "flex flex-col gap-2"
-                        )}>
-                            {[...Array(8)].map((_, i) => (
-                                dashboardViewMode === 'grid' ? (
-                                    <DatabaseSkeleton key={i} />
-                                ) : (
-                                    <div key={i} className="glass-panel p-4 flex items-center justify-between animate-pulse">
-                                        <div className="flex items-center gap-3 w-1/3">
-                                            <div className="w-4 h-4 bg-white/5 rounded" />
-                                            <div className="h-4 bg-white/5 rounded w-full" />
-                                        </div>
-                                        <div className="h-4 bg-white/5 rounded w-16" />
-                                        <div className="h-4 bg-white/5 rounded w-20" />
-                                    </div>
-                                )
-                            ))}
-                        </div>
-                    ) : dashboardViewMode === 'grid' ? (
-                        /* GRID VIEW */
-                        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-6">
-                            {filteredDbs.map(db => (
-                                <button 
-                                    key={db.name}
-                                    onClick={() => handleDbClick(db.name)}
-                                    className="glass-panel p-3! text-left hover:border-primary group transition-all hover:bg-white/5 flex flex-col gap-2 relative"
-                                >
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex items-center gap-2 truncate pr-6">
-                                            <DBIcon className="text-primary flex-shrink-0" size={18} />
-                                            <div className="font-bold text-lg truncate group-hover:text-primary transition-colors" title={db.name}>
-                                                {db.name}
-                                            </div>
-                                        </div>
-                                        <div className="absolute top-2 right-2 flex items-center gap-2">
-                                            <div 
-                                                className="p-2 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors opacity-0 group-hover:opacity-100"
-                                                onClick={(e) => handleDropDb(e, db.name)}
-                                                title="Drop Database"
-                                            >
-                                                <Trash2 size={14} />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-end justify-between mt-auto">
-                                        <div className="text-[10px] font-mono opacity-50 flex items-center gap-1.5">
-                                            <span className="font-bold text-text-main/70">{db.tables_count || 0} Tables</span>
-                                            <span className="opacity-30">•</span>
-                                            <span>{formatBytes(db.size)}</span>
-                                        </div>
-                                        <div className="text-[10px] opacity-40 font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
-                                            utf8mb4_unicode_ci
-                                        </div>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    ) : (
-                        /* LIST VIEW */
-                        <div className="glass-panel border border-border/10 flex flex-col flex-1 min-h-0 overflow-hidden mb-6">
-                            <div className="flex-1 overflow-y-auto custom-scrollbar">
-                                <table className="w-full text-left border-collapse">
-                                    <thead className="sticky top-0 z-10 bg-surface/90 backdrop-blur-md">
-                                        <tr className="border-b border-border bg-black/20 text-[10px] uppercase font-bold text-text-muted tracking-wide">
-                                            <th className="px-5 py-3">Database Name</th>
-                                            <th className="px-5 py-3">Collation</th>
-                                            <th className="px-5 py-3 text-right">Tables</th>
-                                            <th className="px-5 py-3 text-right">Size</th>
-                                            <th className="px-5 py-3 text-right">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-border/30">
-                                        {filteredDbs.map(db => (
-                                            <tr 
-                                                key={db.name} 
-                                                onClick={() => handleDbClick(db.name)}
-                                                className="hover:bg-white/5 cursor-pointer group transition-colors"
-                                            >
-                                                <td className="px-5 py-3 font-semibold text-text-main group-hover:text-primary transition-colors flex items-center gap-3">
-                                                    <DBIcon size={16} className="text-text-muted/50" />
-                                                    {db.name}
-                                                </td>
-                                                <td className="px-5 py-3 text-xs opacity-40 font-mono text-nowrap">utf8mb4_unicode_ci</td> 
-                                                <td className="px-5 py-3 text-right font-mono text-xs opacity-60">{db.tables_count || 0}</td>
-                                                <td className="px-5 py-3 text-right font-mono text-xs opacity-60 text-nowrap">{formatBytes(db.size)}</td>
-                                                <td className="px-5 py-3 text-right">
-                                                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button 
-                                                            className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                                                            onClick={(e) => handleDropDb(e, db.name)}
-                                                            title="Drop Database"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
+            {/* CONTENT AREA */}
+            <div className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
+                <Breadcrumbs />
+                <div className="flex-1 overflow-hidden relative">
+                     <Outlet />
                 </div>
             </div>
 
+            {/* Global Modals */}
             {showCreateDbModal && (
                 <CreateDatabaseModal 
                     onClose={() => setShowCreateDbModal(false)}
@@ -565,8 +438,7 @@ export function ServerOverview() {
                     }}
                 />
             )}
-
-            {showEditServerModal && currentServer && (
+             {showEditServerModal && currentServer && (
                 <AddServerModal 
                     editingServer={currentServer}
                     onClose={() => setShowEditServerModal(false)}
@@ -576,23 +448,22 @@ export function ServerOverview() {
                     }}
                 />
             )}
+            {showCreateTableModal && <CreateTableModal />}
 
+            {/* Admin Modals */}
             {showProcessList && (
                 <ProcessListModal onClose={() => setShowProcessList(false)} />
             )}
-
             {showVariablesModal && (
                 <VariablesModal
                     type={showVariablesModal}
                     onClose={() => setShowVariablesModal(null)}
                 />
             )}
-
             <UsersManagementModal
                 isOpen={showUsersModal}
                 onClose={() => setShowUsersModal(false)}
             />
-
             <PasswordRotationModal
                 isOpen={showRotationModal}
                 onClose={() => setShowRotationModal(false)}

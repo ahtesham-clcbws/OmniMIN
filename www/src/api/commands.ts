@@ -19,6 +19,7 @@ export interface Database {
     name: string;
     size?: number; // Rust returns u64
     tables_count?: number; // Rust returns u64
+    collation: string;
     // description?: string; // Removed as not in Rust
 }
 

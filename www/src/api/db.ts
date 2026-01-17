@@ -50,8 +50,8 @@ export const dbApi = {
         return safeInvoke('update_cell', { db, table, column, value, primary_key_col: pk_col, primary_key_val: pk_val });
     },
 
-    executeQuery: async (sql: string, db?: string) => {
-        return safeInvoke('execute_query', { sql, db });
+    executeQuery: async (db: string, query: string, options?: any) => {
+        return safeInvoke('execute_query', { db, sql: query, options });
     },
 
     getProcessList: async () => {

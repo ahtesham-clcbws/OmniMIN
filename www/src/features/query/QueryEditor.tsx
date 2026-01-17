@@ -1,23 +1,24 @@
 import React, { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Play, Loader2, Clock, Trash2, Database, AlertTriangle, Download, FileJson, Terminal, History as HistoryIcon, Code2, LayoutList } from 'lucide-react';
+import { Play, Loader2, Clock, Trash2, Database, AlertTriangle, Download, FileJson, Terminal, History as HistoryIcon, Code2, Sparkles, Eraser, Save, Info } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { dbApi } from '@/api/db';
 import { cn } from '@/lib/utils';
 import { VisualExplain } from './VisualExplain';
 import { Microscope } from 'lucide-react';
-import { VisualQueryBuilder } from './VisualQueryBuilder';
 import { SnippetLibrary } from './SnippetLibrary';
 import { AIAssistant } from '../ai/AIAssistant';
 import { AIExplanationModal } from '../ai/AIExplanationModal';
 import { v4 as uuidv4 } from 'uuid';
+import { Button } from '@/components/ui/button';
 
 
 export function QueryEditor() {
-    const { currentDb, queryHistory, addHistory } = useAppStore();
-    const [mode, setMode] = useState<'editor' | 'builder' | 'explain'>('editor');
+    const { currentDb, currentTable, queryHistory, addHistory } = useAppStore();
+    const [mode, setMode] = useState<'editor' | 'explain'>('editor'); // Removed 'builder'
     const [sql, setSql] = useState('SELECT * FROM ');
     const [lastResult, setLastResult] = useState<any>(null);
+    const [delimiter, setDelimiter] = useState(';');
 
     const [showSnippets, setShowSnippets] = useState(false);
     const [saveModalOpen, setSaveModalOpen] = useState(false);
@@ -53,6 +54,17 @@ export function QueryEditor() {
         setMode('explain');
     };
 
+    const handleFormat = () => {
+        // Placeholder for formatting logic
+        console.log("Formatting SQL:", sql);
+        // In a real app, you'd send 'sql' to a formatter service/library
+        // and update setSql(formattedSql)
+    };
+
+    const handleClear = () => {
+        setSql('');
+    };
+
     if (!currentDb) {
         return <div className="p-12 text-center opacity-50 flex flex-col items-center gap-4">
             <Database className="w-12 h-12 opacity-20" />
@@ -62,7 +74,7 @@ export function QueryEditor() {
 
     const results = lastResult?.data;
     const error = lastResult?.error;
-    const running = isPending;
+    const isExecuting = isPending; // Renamed for clarity with new toolbar
 
     return (
         <div className="flex h-full">
@@ -80,16 +92,7 @@ export function QueryEditor() {
                         <Code2 size={14} /> SQL Editor
                     </button>
                     <div className="w-px h-3 bg-border mx-1" />
-                    <button 
-                        onClick={() => setMode('builder')}
-                        className={cn(
-                            "px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded transition-colors flex items-center gap-2",
-                            mode === 'builder' ? "bg-surface-alt text-primary" : "text-text-muted hover:text-text-main"
-                        )}
-                    >
-                        <LayoutList size={14} /> Visual Builder
-                    </button>
-                    <div className="w-px h-3 bg-border mx-1" />
+                    {/* Removed Visual Builder button */}
                     <button 
                         onClick={() => mode === 'explain' ? setMode('editor') : handleExplain()}
                         className={cn(
@@ -105,50 +108,100 @@ export function QueryEditor() {
                 {/* Editor Area */}
                 <div className="h-1/3 flex flex-col bg-surface border-b border-border relative">
                    {mode === 'editor' ? (
-                       <>
-                           <div className="flex items-center justify-between p-2 pl-4 border-b border-border bg-surface-alt">
-                                <span className="text-xs font-bold opacity-50 text-text-muted">RAW SQL</span>
-                                <div className="flex gap-2">
-                                     <button 
-                                        onClick={() => handleRunQuery()}
-                                        disabled={running}
-                                        className={cn("btn-primary py-1 px-3 text-xs", running && "opacity-50")}
-                                     >
-                                        {running ? <Loader2 className="animate-spin w-3 h-3" /> : <Play className="w-3 h-3 fill-current" />}
-                                        Run SQL
-                                     </button>
-                                </div>
+                       <div className="flex-1 flex flex-col min-h-0 bg-black/20">
+                           {/* Editor Toolbar */}
+                           <div className="h-10 border-b border-white/5 flex items-center px-4 justify-between bg-surface/30">
+                               <div className="flex items-center gap-3">
+                                   <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Editor</span>
+                                   
+                                   <div className="h-4 w-px bg-white/10 mx-2" />
+                                   
+                                   <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px]" onClick={handleFormat}>
+                                       <Sparkles size={12} className="mr-1.5 text-blue-400" /> Format
+                                   </Button>
+                                   
+                                   <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px]" onClick={handleClear}>
+                                       <Eraser size={12} className="mr-1.5 text-red-400" /> Clear
+                                   </Button>
+
+                                    {/* Templates */}
+                                    <div className="h-4 w-px bg-white/10 mx-2" />
+                                    <div className="flex bg-black/20 rounded p-0.5 gap-0.5">
+                                        <button 
+                                            onClick={() => setSql(`SELECT * FROM \`${currentTable || 'table'}\` WHERE 1;`)}
+                                            className="px-2 py-0.5 text-[10px] font-bold text-text-muted hover:text-primary hover:bg-white/10 rounded transition-colors"
+                                            title="SELECT *"
+                                        >
+                                            SELECT *
+                                        </button>
+                                        <button 
+                                            onClick={() => setSql(`INSERT INTO \`${currentTable || 'table'}\` (\`id\`) VALUES ('val');`)}
+                                            className="px-2 py-0.5 text-[10px] font-bold text-text-muted hover:text-primary hover:bg-white/10 rounded transition-colors"
+                                            title="INSERT"
+                                        >
+                                            INSERT
+                                        </button>
+                                        <button 
+                                            onClick={() => setSql(`UPDATE \`${currentTable || 'table'}\` SET \`id\`='val' WHERE 1;`)}
+                                            className="px-2 py-0.5 text-[10px] font-bold text-text-muted hover:text-primary hover:bg-white/10 rounded transition-colors"
+                                            title="UPDATE"
+                                        >
+                                            UPDATE
+                                        </button>
+                                        <button 
+                                            onClick={() => setSql(`DELETE FROM \`${currentTable || 'table'}\` WHERE 0;`)}
+                                            className="px-2 py-0.5 text-[10px] font-bold text-text-muted hover:text-red-400 hover:bg-white/10 rounded transition-colors"
+                                            title="DELETE"
+                                        >
+                                            DELETE
+                                        </button>
+                                    </div>
+                               </div>
+                               
+                               <div className="flex items-center gap-3">
+                                   <div className="flex items-center gap-2">
+                                       <span className="text-[10px] text-text-muted uppercase font-bold">Delimiter</span>
+                                       <input 
+                                           className="w-12 h-6 bg-black/20 border border-white/10 rounded text-center text-xs font-mono outline-none focus:border-primary/50"
+                                           value={delimiter}
+                                           onChange={(e) => setDelimiter(e.target.value)}
+                                       />
+                                   </div>
+
+                                   <div className="h-4 w-px bg-white/10 mx-2" />
+
+                                   <Button 
+                                       variant="secondary" 
+                                       size="sm" 
+                                       className="h-7 px-3 text-[10px]"
+                                       onClick={handleExplain}
+                                   >
+                                       <Info size={12} className="mr-1.5" /> Explain
+                                   </Button>
+
+                                   <Button 
+                                       size="sm" 
+                                       className="h-7 px-4 text-[11px] font-bold bg-primary hover:bg-primary/90"
+                                       onClick={() => handleRunQuery()}
+                                       disabled={!sql.trim() || isExecuting}
+                                   >
+                                       {isExecuting ? <Loader2 className="animate-spin mr-1.5" size={12}/> : <Play size={12} className="mr-1.5 fill-current" />}
+                                       Run
+                                   </Button>
+                               </div>
                            </div>
-                           <textarea 
-                                className="flex-1 bg-transparent p-4 font-mono text-sm outline-none resize-none text-text-main placeholder-text-muted/50"
-                                value={sql}
-                                onChange={e => setSql(e.target.value)}
-                                placeholder="Enter SQL query..."
-                                spellCheck={false}
-                           />
-                            <div className="h-10 border-t border-border flex items-center justify-between px-4 bg-surface">
-                                <div className="flex items-center gap-4 text-xs font-mono text-text-muted">
-                                    <span>Ln 1, Col 1</span>
-                                    <span>Shift+Enter to Run</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <button 
-                                        className="p-1.5 hover:bg-hover-bg rounded text-text-muted transition-colors"
-                                        title="Format Query"
-                                    >
-                                        <div className="scale-75"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10H3"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M21 18H3"/></svg></div>
-                                    </button>
-                                </div>
-                            </div>
-                       </>
-                   ) : mode === 'builder' ? (
-                       <div className="absolute inset-0 z-10 bg-canvas">
-                           <VisualQueryBuilder onRunQuery={(q) => {
-                               setSql(q); // Sync to editor
-                               handleRunQuery(q); // Run it
-                           }} />
+
+                           <div className="flex-1 relative group">
+                               <textarea
+                                   value={sql}
+                                   onChange={(e) => setSql(e.target.value)}
+                                   className="absolute inset-0 w-full h-full bg-transparent p-4 font-mono text-sm outline-none resize-none text-blue-300 placeholder-white/10"
+                                   placeholder="SELECT * FROM table WHERE..."
+                                   spellCheck={false}
+                               />
+                           </div>
                        </div>
-                   ) : (
+                   ) : ( // Removed 'builder' mode condition
                         <div className="absolute inset-0 z-10 bg-canvas">
                             {/* @ts-ignore */}
                             <VisualExplain sql={sql} db={currentDb} />

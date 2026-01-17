@@ -1,29 +1,37 @@
 import React, { useEffect } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { invoke } from '@tauri-apps/api/core';
-import { BrowserRouter, Routes, Route, useParams, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom';
 import { Layout } from './components/layout/Layout';
 import { useAppStore } from './stores/useAppStore';
 import { Dashboard } from './features/dashboard/Dashboard';
-import { ServerOverview } from './features/server/ServerOverview';
 import { Browser } from './features/browser/Browser';
 import { QueryEditor } from './features/query/QueryEditor';
+import { VisualQueryBuilder } from './features/query/VisualQueryBuilder';
 import { Structure } from './features/structure/Structure';
 import { Designer } from './features/designer/Designer';
 import { Routines } from './features/routines/Routines';
 import { Export } from './features/export/Export';
-import { Import } from './features/import/Import';
 import { ViewTabs } from './features/common/ViewTabs';
 import { dbApi } from './api/db';
 import { Settings } from './features/settings/Settings';
 import { NotFound } from './features/common/NotFound';
 import { NotificationContainer } from './components/ui/NotificationContainer';
 import { OmniBar } from './features/search/OmniBar';
+import { ServerLayout } from './features/server/ServerLayout';
+import { ServerDashboard } from './features/server/ServerDashboard';
+import { DatabaseLayout } from './features/database/DatabaseLayout';
+import { Import } from './features/database/Import';
+import Operations from './features/database/Operations';
+import Search from './features/search/Search';
+import Privileges from './features/database/Privileges';
+import Events from './features/database/Events';
+import Triggers from './features/database/Triggers';
 
 const queryClient = new QueryClient();
 
 // Route wrapper to handle server context
-function ServerContextLayout() {
+function ServerContextLayout({ children }: { children?: React.ReactNode }) {
     const { serverId, dbName, tableName } = useParams();
     const { view, setView, currentDb, currentTable, setCurrentServer, setCurrentDb, setCurrentTable } = useAppStore();
     const navigate = useNavigate();
@@ -73,26 +81,30 @@ function ServerContextLayout() {
     }, [dbName, tableName, currentDb, currentTable]);
 
     return (
-        <Layout>
-            {/* Context Tabs (Only show if DB selected and not in global settings/dashboard) */}
-            {currentDb && view !== 'dashboard' && view !== 'settings' && <ViewTabs />}
-
+        <>
             <div className="flex-1 overflow-hidden relative">
-                {view === 'dashboard' && <ServerOverview />}
-                {view === 'browser' && <Browser />}
-                {view === 'structure' && <Structure />}
-                {view === 'routines' && <Routines />}
-                {view === 'designer' && <Designer />}
-                {view === 'query' && <QueryEditor />}
-                {view === 'export' && <Export />}
-                {view === 'import' && <Import />}
-                {view === 'settings' && (
-                    <div className="p-8 flex items-center justify-center h-full text-white/30">
-                        Settings View Placeholder
-                    </div>
+                {children || (
+                    // Legacy Fallback for backward compatibility if needed, 
+                    // though we are moving away from 'view' state controlling this.
+                    // For now, if children exist (new routing), render them.
+                    <>
+                        {view === 'dashboard' && <div className="p-8 text-center opacity-30 mt-20">Navigating to Dashboard...</div>}
+                        {view === 'browser' && <Browser />}
+                        {view === 'structure' && <Structure />}
+                        {view === 'routines' && <Routines />}
+                        {view === 'designer' && <Designer />}
+                        {view === 'query' && <QueryEditor />}
+                        {view === 'export' && <Export />}
+                        {view === 'import' && <Import />}
+                        {view === 'settings' && (
+                            <div className="p-8 flex items-center justify-center h-full text-white/30">
+                                Settings View Placeholder
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
-        </Layout>
+        </>
     );
 }
 
@@ -114,8 +126,6 @@ function ThemeSync() {
             root.classList.add('ultra-light-mode');
         } else if (theme === 'neo') {
             root.classList.add('neo-mode');
-            // Neo mode forces a slightly different accent behavior or global font weight if desired, 
-            // but for now purely CSS variables handle the colors.
         }
 
         // 2. Accent Color
@@ -131,7 +141,6 @@ function ThemeSync() {
             root.style.removeProperty('--accent-glow');
         } else {
             root.removeAttribute('data-accent');
-            // Custom Hex Logic
             root.style.setProperty('--accent', resolvedColor);
             
             // Simple hex to rgba for glow
@@ -187,7 +196,6 @@ function ThemeSync() {
             serif: "serif"
         };
         
-        // Check if it's a known preset or a custom font
         const customFont = customFonts?.find(f => f.id === fontFamily);
         if (customFont) {
              root.style.setProperty('--font-main', customFont.type === 'custom' ? `'${customFont.family}', sans-serif` : customFont.family);
@@ -204,7 +212,7 @@ function ThemeSync() {
 function PersistenceSync() {
     const { 
         theme, accentColor, density, fontFamily, dashboardViewMode, 
-        showSystemDbs, queryHistory, customFonts, customColors,
+        showSystemDbs, queryHistory, customFonts, customColors, tableViewMode,
         setPreferences 
     } = useAppStore();
 
@@ -215,7 +223,17 @@ function PersistenceSync() {
                 const prefs: any = await invoke('load_preferences');
                 if (prefs) {
                     console.log('Loaded Preferences:', prefs);
-                    setPreferences(prefs);
+                    // Map Rust snake_case to Store camelCase
+                    setPreferences({
+                        theme: prefs.theme,
+                        accentColor: prefs.accent_color,
+                        density: prefs.density,
+                        fontFamily: prefs.font_family,
+                        dashboardViewMode: prefs.dashboard_view_mode,
+                        showSystemDbs: prefs.show_system_dbs,
+                        tableViewMode: prefs.table_view_mode,
+                        queryHistory: prefs.query_history || []
+                    });
                 }
             } catch (e) {
                 console.error("Failed to load preferences:", e);
@@ -228,14 +246,19 @@ function PersistenceSync() {
     useEffect(() => {
         const timer = setTimeout(() => {
             const save = async () => {
+                // Map Store camelCase to Rust snake_case
                 const payload = {
-                    theme, accentColor, density, fontFamily, dashboardViewMode,
-                    showSystemDbs, 
-                    queryHistory: queryHistory.map(q => ({
+                    theme,
+                    accent_color: accentColor,
+                    density,
+                    font_family: fontFamily,
+                    dashboard_view_mode: dashboardViewMode,
+                    show_system_dbs: showSystemDbs,
+                    table_view_mode: tableViewMode,
+                    query_history: queryHistory.map(q => ({
                         ...q,
                         timestamp: q.timestamp.toISOString() // Backend expects String ISO
                     }))
-                    // customFonts/Colors logic if we add to backend later
                 };
                 try {
                    await invoke('save_preferences', { preferences: payload });
@@ -247,7 +270,7 @@ function PersistenceSync() {
         }, 500); // 500ms debounce
 
         return () => clearTimeout(timer);
-    }, [theme, accentColor, density, fontFamily, dashboardViewMode, showSystemDbs, queryHistory]);
+    }, [theme, accentColor, density, fontFamily, dashboardViewMode, showSystemDbs, tableViewMode, queryHistory]);
 
     return null;
 }
@@ -262,9 +285,30 @@ function App() {
             <Settings /> 
             <Routes>
                 <Route path="/" element={<Layout><Dashboard /></Layout>} />
-                <Route path="/server/:serverId/:dbName?/:tableName?" element={<ServerContextLayout />} />
-                {/* <Route path="/settings" element={<Layout><Settings /></Layout>} /> - Moved to Modal */}
-                {/* Fallback for unknown routes */}
+                
+                {/* Server Nested Routes */}
+                <Route path="/server/:serverId" element={<Layout><ServerContextLayout><ServerLayout /></ServerContextLayout></Layout>}>
+                    <Route index element={<ServerDashboard />} />
+                    
+                    {/* Database Layout & Views */}
+                    <Route path=":dbName" element={<DatabaseLayout />}>
+                        <Route index element={<Structure />} />
+                        <Route path="structure" element={<Structure />} />
+                        <Route path="table/:tableName" element={<Browser />} />
+                        <Route path="sql" element={<div className="h-full"><QueryEditor /></div>} />
+                        <Route path="search" element={<Search />} />
+                        <Route path="query" element={<VisualQueryBuilder onRunQuery={(sql) => console.log(sql)} />} />
+                        <Route path="export" element={<Export />} />
+                        <Route path="import" element={<Import />} />
+                        <Route path="operations" element={<Operations />} />
+                        <Route path="privileges" element={<Privileges />} />
+                        <Route path="routines" element={<Routines />} />
+                        <Route path="events" element={<Events />} />
+                        <Route path="triggers" element={<Triggers />} />
+                        <Route path="designer" element={<Designer />} />
+                    </Route>
+                </Route>
+
                 <Route path="*" element={<NotFound />} />
             </Routes>
         </BrowserRouter>
@@ -272,4 +316,4 @@ function App() {
   )
 }
 
-export default App
+export default App;
