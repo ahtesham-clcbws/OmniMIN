@@ -14,12 +14,9 @@ The project has been successfully pivoted from a PHP-wrapper to a **Purely Nativ
 | File | Purpose |
 | :--- | :--- |
 | `AGENT_INSTRUCTIONS.md` | Clear guide for the next developer/AI. |
-| `ANALYSIS_REPORT.md` | Why we chose Rust over PHP. |
-| `BEST_PRACTICES.md` | Code standards and performance tips. |
+| `task.md` | The final status of all roadmap items. |
 | `CHLOG_FIXES.md` | History of all major changes. |
 | `implementation_plan.md`| The technical blueprint we followed. |
-| `task.md` | The final status of all roadmap items. |
-| `UI_MIGRATION_TAILWIND_V4.md`| Details on the Tailwind v4 implementation. |
 
 ## Recommended Next Steps
 1.  **Run Dev**: execute `npm run dev` to start the app in development mode.

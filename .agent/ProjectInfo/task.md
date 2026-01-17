@@ -44,6 +44,11 @@
 - [x] Persistent Password Storage & Direct Connect <!-- id: 35 -->
 - [x] Refactor Sidebar for Nested Schema Explorer <!-- id: 26 -->
     - [x] Implement Expand/Collapse (Plus Icon) logic <!-- id: 29 -->
+    - [x] Ensure Grid/List toggle works for Table List.
+- [x] **Documentation Architecture**:
+    - [x] Migrate `ProjectInfo` to `.agent/ProjectInfo`.
+    - [x] Standardize `.agent` folder structure (rules, workflows).
+    - [x] Consolidate `instructions.md` into `PATTERNS.md`.
     - [x] Add Pointer Cursors for all interactive items <!-- id: 30 -->
     - [x] **Refine Dashboard Density & Colors**:
     - [x] Compactor Layout: Reduce padding and font sizes.

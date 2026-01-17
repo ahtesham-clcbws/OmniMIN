@@ -5,6 +5,10 @@ This document outlines the architectural patterns and coding rules for the OmniM
 
 ## Frontend Patterns
 
+### 0. Core API & Preferences
+- **Database Query**: Always use `dbApi.executeQuery(dbName, sql, options)`. (`dbName` can be empty for server commands).
+- **Preference Mapping**: Sync `accentColor` (frontend/camelCase) ↔ `accent_color` (backend/snake_case).
+
 ### 1. Notifications (Toast)
 **Rule:** Do NOT use `sonner` or other external toast libraries directly in feature components.
 **Pattern:** Use the internal `showToast` utility which wraps the custom `useNotificationStore`.
