@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # React Component Structure
 
 ## Rule

@@ -84,14 +84,14 @@ export function ServerDashboard() {
     };
 
     const DatabaseSkeleton = () => (
-        <div className="glass-panel p-4 flex flex-col gap-3 relative animate-pulse">
+        <div className="glass-panel p-3 flex flex-col gap-2 relative animate-pulse max-h-[90px]">
             <div className="flex justify-between items-start">
-                <div className="w-8 h-8 rounded bg-white/5" />
+                <div className="w-5 h-5 rounded bg-white/5" />
             </div>
-            <div className="space-y-2">
-                <div className="h-5 w-3/4 bg-white/5 rounded" />
-                <div className="h-3 w-1/2 bg-white/5 rounded" />
-                <div className="h-3 w-1/3 bg-white/5 rounded" />
+            <div className="space-y-1.5">
+                <div className="h-4 w-3/4 bg-white/5 rounded" />
+                <div className="h-2.5 w-1/2 bg-white/5 rounded" />
+                <div className="h-2.5 w-1/3 bg-white/5 rounded" />
             </div>
         </div>
     );
@@ -101,7 +101,7 @@ export function ServerDashboard() {
              {loadingDbs ? (
                 /* SKELETON LOADING STATE */
                 <div className={cn(
-                    "flex-1 overflow-y-auto pr-2 custom-scrollbar",
+                    "pr-2",
                     dashboardViewMode === 'grid' 
                         ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-6"
                         : "flex flex-col gap-2"
@@ -147,12 +147,7 @@ export function ServerDashboard() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex items-end justify-between mt-1.5 w-full">
-                                <div className="text-[10px] font-mono opacity-50 flex items-center gap-1.5">
-                                    <span className="font-bold text-text-main/70">{db.tables_count || 0} Tables</span>
-                                    <span className="opacity-30">•</span>
-                                    <span>{formatBytes(db.size)}</span>
-                                </div>
+                            <div className="flex items-end justify-end mt-1.5 w-full">
                                 <div className="text-[10px] opacity-40 font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
                                     {db.collation}
                                 </div>
@@ -161,48 +156,88 @@ export function ServerDashboard() {
                     ))}
                 </div>
             ) : (
-                /* LIST VIEW */
-                <div className="glass-panel border border-border/10 flex flex-col flex-1 min-h-0 overflow-hidden mb-6">
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                        <table className="w-full text-left border-collapse">
-                            <thead className="sticky top-0 z-10 bg-surface/90 backdrop-blur-md">
-                                <tr className="border-b border-border bg-black/20 text-[10px] uppercase font-bold text-text-muted tracking-wide">
-                                    <th className="px-5 py-3">Database Name</th>
-                                    <th className="px-5 py-3">Collation</th>
-                                    <th className="px-5 py-3 text-right">Tables</th>
-                                    <th className="px-5 py-3 text-right">Size</th>
-                                    <th className="px-5 py-3 text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border/30">
-                                {filteredDbs.map(db => (
-                                    <tr 
-                                        key={db.name} 
-                                        onClick={() => handleDbClick(db.name)}
-                                        className="hover:bg-white/5 cursor-pointer group transition-colors"
-                                    >
-                                        <td className="px-5 py-3 font-semibold text-text-main group-hover:text-primary transition-colors flex items-center gap-3">
-                                            <DBIcon size={16} className="text-text-muted/50" />
-                                            {db.name}
-                                        </td>
-                                        <td className="px-5 py-3 text-xs opacity-40 font-mono text-nowrap">{db.collation}</td> 
-                                        <td className="px-5 py-3 text-right font-mono text-xs opacity-60">{db.tables_count || 0}</td>
-                                        <td className="px-5 py-3 text-right font-mono text-xs opacity-60 text-nowrap">{formatBytes(db.size)}</td>
-                                        <td className="px-5 py-3 text-right">
-                                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                /* LIST VIEW - 2 Column Layout */
+                <div className="grid grid-cols-2 gap-4 flex-1 min-h-0 mb-6">
+                    {/* Left Column */}
+                    <div className="glass-panel border border-border/10 flex flex-col overflow-hidden">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="sticky top-0 z-10 bg-surface/90 backdrop-blur-md">
+                                    <tr className="border-b border-border bg-black/20 text-[10px] uppercase font-bold text-text-muted tracking-wide">
+                                        <th className="px-4 py-2.5">Database</th>
+                                        <th className="px-4 py-2.5">Collation</th>
+                                        <th className="px-4 py-2.5 w-8"></th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/30">
+                                    {filteredDbs.slice(0, Math.ceil(filteredDbs.length / 2)).map(db => (
+                                        <tr 
+                                            key={db.name} 
+                                            onClick={() => handleDbClick(db.name)}
+                                            className="hover:bg-white/5 cursor-pointer group transition-colors"
+                                        >
+                                            <td className="px-4 py-2.5 font-semibold text-text-main group-hover:text-primary transition-colors">
+                                                <div className="flex items-center gap-2">
+                                                    <DBIcon size={14} className="text-text-muted/50 flex-shrink-0" />
+                                                    <span className="truncate">{db.name}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-2.5 text-[10px] opacity-40 font-mono truncate">{db.collation}</td>
+                                            <td className="px-4 py-2.5">
                                                 <button 
-                                                    className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                                    className="p-1 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded transition-colors opacity-0 group-hover:opacity-100"
                                                     onClick={(e) => handleDropDb(e, db.name)}
                                                     title="Drop Database"
                                                 >
-                                                    <Trash2 size={14} />
+                                                    <Trash2 size={12} />
                                                 </button>
-                                            </div>
-                                        </td>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="glass-panel border border-border/10 flex flex-col overflow-hidden">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="sticky top-0 z-10 bg-surface/90 backdrop-blur-md">
+                                    <tr className="border-b border-border bg-black/20 text-[10px] uppercase font-bold text-text-muted tracking-wide">
+                                        <th className="px-4 py-2.5">Database</th>
+                                        <th className="px-4 py-2.5">Collation</th>
+                                        <th className="px-4 py-2.5 w-8"></th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-border/30">
+                                    {filteredDbs.slice(Math.ceil(filteredDbs.length / 2)).map(db => (
+                                        <tr 
+                                            key={db.name} 
+                                            onClick={() => handleDbClick(db.name)}
+                                            className="hover:bg-white/5 cursor-pointer group transition-colors"
+                                        >
+                                            <td className="px-4 py-2.5 font-semibold text-text-main group-hover:text-primary transition-colors">
+                                                <div className="flex items-center gap-2">
+                                                    <DBIcon size={14} className="text-text-muted/50 flex-shrink-0" />
+                                                    <span className="truncate">{db.name}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-2.5 text-[10px] opacity-40 font-mono truncate">{db.collation}</td>
+                                            <td className="px-4 py-2.5">
+                                                <button 
+                                                    className="p-1 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                                    onClick={(e) => handleDropDb(e, db.name)}
+                                                    title="Drop Database"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             )}

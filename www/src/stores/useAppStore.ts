@@ -70,6 +70,16 @@ interface AppState {
   dashboardSearchTerm: string;
   setDashboardSearchTerm: (term: string) => void;
 
+  // Performance & Debug Settings
+  debugMode: boolean;
+  performanceMonitoring: boolean;
+  showPerformanceOverlay: boolean;
+  logLevel: 'debug' | 'info' | 'warn' | 'error';
+  setDebugMode: (enabled: boolean) => void;
+  setPerformanceMonitoring: (enabled: boolean) => void;
+  setShowPerformanceOverlay: (show: boolean) => void;
+  setLogLevel: (level: 'debug' | 'info' | 'warn' | 'error') => void;
+
   setCurrentServer: (server: ServerConfig | null) => void;
   setCurrentDb: (db: string | null) => void;
   setCurrentTable: (table: string | null) => void;
@@ -102,6 +112,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           tableViewMode: prefs.tableViewMode ?? 'list' as any,
           showSystemDbs: prefs.showSystemDbs,
           queryHistory: prefs.queryHistory.map((q: any) => ({ ...q, timestamp: new Date(q.timestamp) })),
+          // Performance settings
+          debugMode: prefs.debugMode ?? false,
+          performanceMonitoring: prefs.performanceMonitoring ?? false,
+          showPerformanceOverlay: prefs.showPerformanceOverlay ?? false,
+          logLevel: prefs.logLevel ?? 'info',
       }),
 
       setTheme: (theme) => set({ theme }),
@@ -129,6 +144,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       dashboardSearchTerm: '',
       setDashboardSearchTerm: (term) => set({ dashboardSearchTerm: term }),
+
+      // Performance & Debug Settings defaults
+      debugMode: false,
+      performanceMonitoring: false,
+      showPerformanceOverlay: false,
+      logLevel: 'info',
+      setDebugMode: (enabled) => set({ debugMode: enabled }),
+      setPerformanceMonitoring: (enabled) => set({ performanceMonitoring: enabled }),
+      setShowPerformanceOverlay: (show) => set({ showPerformanceOverlay: show }),
+      setLogLevel: (level) => set({ logLevel: level }),
 
       setCurrentServer: (currentServer) => set({ currentServer }),
       setCurrentDb: (currentDb) => set({ currentDb }),

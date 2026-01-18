@@ -19,15 +19,14 @@ pub async fn get_databases(state: State<'_, AppState>) -> Result<Vec<DatabaseInf
     };
     let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
 
+    // OPTIMIZED: Only fetch essential fields, no expensive JOINs
+    // Size and table count can be fetched on-demand when user clicks a database
     let sql = "
         SELECT 
-            s.SCHEMA_NAME AS name,
-            s.DEFAULT_COLLATION_NAME AS collation,
-            IFNULL(SUM(t.DATA_LENGTH + t.INDEX_LENGTH), 0) AS total_size,
-            COUNT(t.TABLE_NAME) AS tables_count
-        FROM information_schema.SCHEMATA s
-        LEFT JOIN information_schema.TABLES t ON s.SCHEMA_NAME = t.TABLE_SCHEMA
-        GROUP BY s.SCHEMA_NAME, s.DEFAULT_COLLATION_NAME
+            SCHEMA_NAME AS name,
+            DEFAULT_COLLATION_NAME AS collation
+        FROM information_schema.SCHEMATA
+        ORDER BY SCHEMA_NAME
     ";
 
     let mut result = conn.query_iter(sql).await.map_err(|e| e.to_string())?;
@@ -37,8 +36,8 @@ pub async fn get_databases(state: State<'_, AppState>) -> Result<Vec<DatabaseInf
     for row in rows {
         databases.push(DatabaseInfo {
             name: row.get::<Option<String>, _>("name").flatten().unwrap_or_default(),
-            size: row.get::<Option<u64>, _>("total_size").flatten().unwrap_or(0),
-            tables_count: row.get::<Option<u64>, _>("tables_count").flatten().unwrap_or(0),
+            size: 0,  // Will be fetched on-demand
+            tables_count: 0,  // Will be fetched on-demand
             collation: row.get::<Option<String>, _>("collation").flatten().unwrap_or_default(),
         });
     }
@@ -153,4 +152,32 @@ pub async fn copy_database(name: String, new_name: String, with_data: bool, stat
         }
     }
     Ok(())
+}
+
+// NEW: On-demand database statistics (called only when needed)
+#[tauri::command]
+pub async fn get_database_stats(db_name: String, state: State<'_, AppState>) -> Result<(u64, u64), String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.as_ref().cloned().ok_or("Not connected")?
+    };
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+
+    let sql = format!("
+        SELECT 
+            IFNULL(SUM(DATA_LENGTH + INDEX_LENGTH), 0) AS total_size,
+            COUNT(TABLE_NAME) AS tables_count
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = '{}'
+    ", db_name);
+
+    let row: Option<mysql_async::Row> = conn.query_first(sql).await.map_err(|e| e.to_string())?;
+    
+    if let Some(row) = row {
+        let size = row.get::<Option<u64>, _>(0).flatten().unwrap_or(0);
+        let count = row.get::<Option<u64>, _>(1).flatten().unwrap_or(0);
+        Ok((size, count))
+    } else {
+        Ok((0, 0))
+    }
 }

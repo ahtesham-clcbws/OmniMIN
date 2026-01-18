@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Agent Persistence & Context Preservation
 
 ## Rule

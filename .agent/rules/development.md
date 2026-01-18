@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # OmniMIN Development Rules
 
 ## 1. Frontend Standards

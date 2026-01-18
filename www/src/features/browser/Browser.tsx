@@ -4,6 +4,8 @@ import { useAppStore } from '@/stores/useAppStore';
 import { dbApi } from '@/api/db';
 import { Loader2, Table2, Edit2, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useVirtualizer } from '@tanstack/react-virtual';
+
 
 // Helper to render editable cells
 function EditableCell({ value, onSave }: { value: any, onSave: (val: any) => void }) {
@@ -101,6 +103,17 @@ export function Browser() {
         return browseData.columns.indexOf(browseData.primary_key);
     }, [browseData]);
 
+    // Virtualization setup
+    const tableContainerRef = React.useRef<HTMLDivElement>(null);
+    
+    const rowVirtualizer = useVirtualizer({
+        count: browseData?.rows.length || 0,
+        getScrollElement: () => tableContainerRef.current,
+        estimateSize: () => 42, // Estimated row height
+        overscan: 5,
+    });
+
+
     if (!currentDb) {
         return <div className="p-8 text-center text-white/30">Select a database to browse</div>;
     }
@@ -179,7 +192,7 @@ export function Browser() {
                                 <span className="text-sm font-bold animate-pulse">Fetching records...</span>
                             </div>
                         ) : (
-                            <div className="flex-1 overflow-auto bg-canvas">
+                            <div ref={tableContainerRef} className="flex-1 overflow-auto bg-canvas">
                                 <table className="w-full text-left border-collapse table-fixed min-w-max">
                                     <thead className="sticky top-0 z-10">
                                         <tr className="bg-surface/95 backdrop-blur border-b border-border shadow-sm">
@@ -197,11 +210,30 @@ export function Browser() {
                                             ))}
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-border/30">
-                                        {browseData?.rows.map((row, rowIndex) => {
+                                    <tbody style={{
+                                        height: `${rowVirtualizer.getTotalSize()}px`,
+                                        position: 'relative',
+                                    }}>
+                                        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                                            const rowIndex = virtualRow.index;
+                                            const row = browseData?.rows[rowIndex];
+                                            if (!row) return null;
+
                                             const pkVal = pkIndex !== -1 ? row[pkIndex] : null;
+
                                             return (
-                                                <tr key={rowIndex} className="hover:bg-white/[0.02] transition-colors group">
+                                                <tr 
+                                                    key={virtualRow.key}
+                                                    className="hover:bg-white/[0.02] transition-colors group"
+                                                    style={{
+                                                        position: 'absolute',
+                                                        top: 0,
+                                                        left: 0,
+                                                        width: '100%',
+                                                        height: `${virtualRow.size}px`,
+                                                        transform: `translateY(${virtualRow.start}px)`,
+                                                    }}
+                                                >
                                                     <td className="p-3 text-[10px] text-center opacity-30 font-mono bg-black/5">
                                                         {((page - 1) * limit) + rowIndex + 1}
                                                     </td>

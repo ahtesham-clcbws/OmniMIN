@@ -37,6 +37,7 @@ pub fn run() {
             commands::database::drop_database,
             commands::database::get_collations,
             commands::database::alter_database_collation,
+            commands::database::get_database_stats,
 
             // Table
             commands::table::get_tables,

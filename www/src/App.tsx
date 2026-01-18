@@ -27,8 +27,19 @@ import Search from './features/search/Search';
 import Privileges from './features/database/Privileges';
 import Events from './features/database/Events';
 import Triggers from './features/database/Triggers';
+import { PerformanceOverlay } from './components/performance/PerformanceOverlay';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            staleTime: 30000,              // 30s - data stays fresh, reduces refetches
+            gcTime: 300000,                // 5min - keep unused data in cache
+            retry: 1,                      // Only retry once on failure
+            refetchOnWindowFocus: false,   // Don't refetch when window regains focus
+            refetchOnReconnect: false,     // Don't refetch on network reconnect
+        },
+    },
+});
 
 // Route wrapper to handle server context
 function ServerContextLayout({ children }: { children?: React.ReactNode }) {
@@ -211,9 +222,20 @@ function ThemeSync() {
 // Persistence Sync Component
 function PersistenceSync() {
     const { 
-        theme, accentColor, density, fontFamily, dashboardViewMode, 
-        showSystemDbs, queryHistory, customFonts, customColors, tableViewMode,
-        setPreferences 
+        setPreferences, 
+        theme, 
+        accentColor, 
+        density, 
+        fontFamily, 
+        dashboardViewMode, 
+        showSystemDbs, 
+        tableViewMode, 
+        queryHistory,
+        // Performance settings
+        debugMode,
+        performanceMonitoring,
+        showPerformanceOverlay,
+        logLevel
     } = useAppStore();
 
     // 1. Load on Mount
@@ -232,7 +254,12 @@ function PersistenceSync() {
                         dashboardViewMode: prefs.dashboard_view_mode,
                         showSystemDbs: prefs.show_system_dbs,
                         tableViewMode: prefs.table_view_mode,
-                        queryHistory: prefs.query_history || []
+                        queryHistory: prefs.query_history || [],
+                        // Performance settings
+                        debugMode: prefs.debug_mode || false,
+                        performanceMonitoring: prefs.performance_monitoring || false,
+                        showPerformanceOverlay: prefs.show_performance_overlay || false,
+                        logLevel: prefs.log_level || 'info'
                     });
                 }
             } catch (e) {
@@ -258,7 +285,12 @@ function PersistenceSync() {
                     query_history: queryHistory.map(q => ({
                         ...q,
                         timestamp: q.timestamp.toISOString() // Backend expects String ISO
-                    }))
+                    })),
+                    // Performance settings
+                    debug_mode: debugMode,
+                    performance_monitoring: performanceMonitoring,
+                    show_performance_overlay: showPerformanceOverlay,
+                    log_level: logLevel
                 };
                 try {
                    await invoke('save_preferences', { preferences: payload });
@@ -270,7 +302,7 @@ function PersistenceSync() {
         }, 500); // 500ms debounce
 
         return () => clearTimeout(timer);
-    }, [theme, accentColor, density, fontFamily, dashboardViewMode, showSystemDbs, tableViewMode, queryHistory]);
+    }, [theme, accentColor, density, fontFamily, dashboardViewMode, showSystemDbs, tableViewMode, queryHistory, debugMode, performanceMonitoring, showPerformanceOverlay, logLevel]);
 
     return null;
 }
@@ -281,7 +313,12 @@ function App() {
         <ThemeSync />
         <PersistenceSync />
         <NotificationContainer />
-        <BrowserRouter>
+        <BrowserRouter
+            future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true
+            }}
+        >
             <Settings /> 
             <Routes>
                 <Route path="/" element={<Layout><Dashboard /></Layout>} />
@@ -312,6 +349,7 @@ function App() {
                 <Route path="*" element={<NotFound />} />
             </Routes>
         </BrowserRouter>
+        <PerformanceOverlay />
     </QueryClientProvider>
   )
 }

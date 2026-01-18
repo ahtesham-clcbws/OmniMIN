@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Strict Typing & TypeScript Rules
 
 ## Rule

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
-import { Moon, Sun, Monitor, Type, LayoutTemplate, LayoutGrid, LayoutDashboard, List, Palette, Plus, Rows, Upload, Search, X, Check, SunDim } from 'lucide-react';
+import { Moon, Sun, Monitor, Type, LayoutTemplate, LayoutGrid, LayoutDashboard, List, Palette, Plus, Rows, Upload, Search, X, Check, SunDim, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/Modal';
 
@@ -14,7 +14,11 @@ export function Settings() {
         dashboardViewMode, setDashboardViewMode,
         customFonts, addCustomFont, removeCustomFont,
         customColors, addCustomColor, removeCustomColor,
-        showSettings, setShowSettings
+        showSettings, setShowSettings,
+        // Performance settings
+        debugMode, setDebugMode,
+        performanceMonitoring, setPerformanceMonitoring,
+        showPerformanceOverlay, setShowPerformanceOverlay,
     } = useAppStore();
 
     const [showFontModal, setShowFontModal] = useState(false);
@@ -272,6 +276,75 @@ export function Settings() {
                             <Button variant="outline" className="gap-2 h-auto py-3 rounded-xl border-dashed border-border text-text-muted hover:text-primary hover:border-primary bg-transparent">
                                 <Upload size={16} /> Upload Font
                             </Button>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Debug & Performance */}
+                <section className="mb-10">
+                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                        <Activity className="text-primary" size={20} /> Debug & Performance
+                    </h2>
+                    <div className="space-y-4">
+                        {/* Debug Mode Toggle */}
+                        <div className="flex items-center justify-between p-4 glass-panel rounded-xl">
+                            <div>
+                                <div className="font-bold">Debug Mode</div>
+                                <div className="text-xs opacity-50">Enable advanced debugging features</div>
+                            </div>
+                            <button
+                                onClick={() => setDebugMode(!debugMode)}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${
+                                    debugMode ? 'bg-primary' : 'bg-white/10'
+                                }`}
+                            >
+                                <div
+                                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                                        debugMode ? 'translate-x-6' : ''
+                                    }`}
+                                />
+                            </button>
+                        </div>
+
+                        {/* Performance Monitoring Toggle */}
+                        <div className="flex items-center justify-between p-4 glass-panel rounded-xl">
+                            <div>
+                                <div className="font-bold">Performance Monitoring</div>
+                                <div className="text-xs opacity-50">Track app performance metrics</div>
+                            </div>
+                            <button
+                                onClick={() => setPerformanceMonitoring(!performanceMonitoring)}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${
+                                    performanceMonitoring ? 'bg-primary' : 'bg-white/10'
+                                }`}
+                            >
+                                <div
+                                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                                        performanceMonitoring ? 'translate-x-6' : ''
+                                    }`}
+                                />
+                            </button>
+                        </div>
+
+                        {/* Performance Overlay Toggle */}
+                        <div className="flex items-center justify-between p-4 glass-panel rounded-xl">
+                            <div>
+                                <div className="font-bold">Show Performance Overlay</div>
+                                <div className="text-xs opacity-50">Display FPS, memory, and metrics on screen</div>
+                            </div>
+                            <button
+                                onClick={() => setShowPerformanceOverlay(!showPerformanceOverlay)}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${
+                                    showPerformanceOverlay ? 'bg-primary' : 'bg-white/10'
+                                }`}
+                                disabled={!performanceMonitoring}
+                            >
+                                <div
+                                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                                        showPerformanceOverlay ? 'translate-x-6' : ''
+                                    } ${!performanceMonitoring ? 'opacity-50' : ''}`}
+                                />
+                            </button>
                         </div>
                     </div>
                 </section>

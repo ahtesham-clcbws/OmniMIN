@@ -13,6 +13,11 @@ pub struct AppPreferences {
     pub dashboard_view_mode: String,
     pub show_system_dbs: bool,
     pub query_history: Vec<QueryHistoryItem>,
+    // Performance & Debug Settings
+    pub debug_mode: bool,
+    pub performance_monitoring: bool,
+    pub show_performance_overlay: bool,
+    pub log_level: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -31,6 +36,11 @@ impl Default for AppPreferences {
             dashboard_view_mode: "grid".to_string(),
             show_system_dbs: false,
             query_history: vec![],
+            // Performance defaults
+            debug_mode: false,
+            performance_monitoring: false,
+            show_performance_overlay: false,
+            log_level: "info".to_string(),
         }
     }
 }
