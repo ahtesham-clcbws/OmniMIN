@@ -7,6 +7,11 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-01-19
+### Documentation
+- **Scope Refinement**: Explicitly marked Replication, Cluster, BinLogs, and Tracking as "Out of Scope" to focus on Developer Experience.
+- **Gap Analysis**: Detailed feature comparison parity with phpMyAdmin.
+
 ## [0.3.0] - 2026-01-19
 ### Added (Phase 3: Advanced Features)
 - **Table Operations**:
