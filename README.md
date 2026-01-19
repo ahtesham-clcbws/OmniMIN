@@ -115,12 +115,16 @@ Access via **Settings → Debug & Performance** to enable monitoring features.
 - [x] **Grid/List View**: Toggleable layout per user preference.
 - [x] **Stats Widget**: Live server status and uptime.
 
-### Phase 3: Information-Dense UI
+### Phase 3: Advanced Features (Completed)
 - [x] **Compact Layout**: Optimized density for power users.
 - [x] **Context Bar**: Breadcrumbs for SQL Browser.
 - [x] **Tabbed Navigation**: Separate views for Structure, SQL, Designer.
-- [x] **Sidebar Explorer**: Nested schema explorer with expand/collapse.
-- [x] **Help Center**: Global in-app documentation & shortcuts guide.
+- [x] **Table Maintenance**: Visualize Optimize/Repair results.
+- [x] **Table Operations**: Rename/Copy/Move tables.
+- [x] **BLOB Preview**: Inline image/binary data viewer.
+- [x] **JSON Formatter**: Pretty-print & edit JSON columns.
+- [x] **Export Templates**: Save & Load export configurations.
+- [x] **Server Monitoring**: Real-time traffic & load charts.
 
 ### Phase 4: Schema Designer (Visual Architect)
 - [x] **Drag & Drop**: React Flow based table design.

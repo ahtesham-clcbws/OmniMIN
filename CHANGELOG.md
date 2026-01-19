@@ -7,6 +7,24 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-01-19
+### Added (Phase 3: Advanced Features)
+- **Table Operations**:
+  - Implemented `Rename`, `Copy`, and `Move` table UI.
+  - Added Maintenance Dashboard (`OPTIMIZE`, `CHECK`, `REPAIR`).
+- **Data Visualization**:
+  - **BLOB Preview**: Native image rendering for binary columns.
+  - **JSON Formatter**: Auto-detect, pretty-print, and minify JSON data.
+- **Server Monitoring**:
+  - Real-time QPS and Traffic charts (~5s polling).
+  - Integrated directly into Server Dashboard.
+- **Export Power Tools**:
+  - **Templates**: Save and load custom export configurations to persistent storage.
+  - Added JSON/CSV export options.
+- **AI Integration**:
+  - Added connection testing for Ollama/Gemini.
+  - Persisted AI settings in `preferences.json`.
+
 ## [0.2.0] - 2026-01-17
 ### Added
 - **Inline Spreadsheet Editing**:
