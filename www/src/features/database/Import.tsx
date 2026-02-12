@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { useAppStore } from '@/stores/useAppStore';
 import { dbApi } from '@/api/db';
 import { Button } from '@/components/ui/button';
 import { Loader2, Upload, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { showToast } from '@/utils/ui';
+import { useState } from 'react';
 
 export function Import() {
     const { currentDb } = useAppStore();
+    const { tableName } = useParams();
     const [file, setFile] = useState<File | null>(null);
     const [importing, setImporting] = useState(false);
     const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -52,7 +54,7 @@ export function Import() {
         <div className="p-8 max-w-4xl mx-auto">
             <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
                 <Upload className="text-primary" />
-                Import into database <span className="text-primary font-mono">{currentDb}</span>
+                Import into {tableName ? <span>table <span className="text-primary font-mono">{tableName}</span></span> : <span>database <span className="text-primary font-mono">{currentDb}</span></span>}
             </h1>
 
             <div className="grid gap-6">

@@ -13,3 +13,5 @@ pub mod routines;
 pub mod snippets;
 pub mod ai;
 pub mod preferences;
+pub mod monitor;
+pub mod debug_logger;

@@ -9,8 +9,10 @@ import { Browser } from './features/browser/Browser';
 import { QueryEditor } from './features/query/QueryEditor';
 import { VisualQueryBuilder } from './features/query/VisualQueryBuilder';
 import { Structure } from './features/structure/Structure';
+import TableOperations from './features/structure/TableOperations';
 import { Designer } from './features/designer/Designer';
 import { Routines } from './features/routines/Routines';
+import { TableInsert } from './features/structure/TableInsert';
 import { Export } from './features/export/Export';
 import { ViewTabs } from './features/common/ViewTabs';
 import { dbApi } from './api/db';
@@ -20,14 +22,18 @@ import { NotificationContainer } from './components/ui/NotificationContainer';
 import { OmniBar } from './features/search/OmniBar';
 import { ServerLayout } from './features/server/ServerLayout';
 import { ServerDashboard } from './features/server/ServerDashboard';
+import StatusVariables from './features/server/StatusVariables';
+import ServerVariables from './features/server/ServerVariables';
+import Charsets from './features/server/Charsets';
 import { DatabaseLayout } from './features/database/DatabaseLayout';
 import { Import } from './features/database/Import';
 import Operations from './features/database/Operations';
 import Search from './features/search/Search';
 import Privileges from './features/database/Privileges';
-import Events from './features/database/Events';
-import Triggers from './features/database/Triggers';
+import { Events } from './features/database/Events';
+import { Triggers } from './features/database/Triggers';
 import { PerformanceOverlay } from './components/performance/PerformanceOverlay';
+import { DebugOverlay } from './components/debug/DebugOverlay';
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -235,7 +241,11 @@ function PersistenceSync() {
         debugMode,
         performanceMonitoring,
         showPerformanceOverlay,
-        logLevel
+        logLevel,
+        // AI Config
+        aiConfig,
+        // Export Templates
+        exportTemplates
     } = useAppStore();
 
     // 1. Load on Mount
@@ -259,7 +269,11 @@ function PersistenceSync() {
                         debugMode: prefs.debug_mode || false,
                         performanceMonitoring: prefs.performance_monitoring || false,
                         showPerformanceOverlay: prefs.show_performance_overlay || false,
-                        logLevel: prefs.log_level || 'info'
+                        logLevel: prefs.log_level || 'info',
+                        // AI Config
+                        ai_config: prefs.ai_config,
+                        // Export Templates
+                        export_templates: prefs.export_templates
                     });
                 }
             } catch (e) {
@@ -290,7 +304,11 @@ function PersistenceSync() {
                     debug_mode: debugMode,
                     performance_monitoring: performanceMonitoring,
                     show_performance_overlay: showPerformanceOverlay,
-                    log_level: logLevel
+                    log_level: logLevel,
+                    // AI Config
+                    ai_config: aiConfig,
+                    // Export Templates
+                    export_templates: exportTemplates
                 };
                 try {
                    await invoke('save_preferences', { preferences: payload });
@@ -302,7 +320,7 @@ function PersistenceSync() {
         }, 500); // 500ms debounce
 
         return () => clearTimeout(timer);
-    }, [theme, accentColor, density, fontFamily, dashboardViewMode, showSystemDbs, tableViewMode, queryHistory, debugMode, performanceMonitoring, showPerformanceOverlay, logLevel]);
+    }, [theme, accentColor, density, fontFamily, dashboardViewMode, showSystemDbs, tableViewMode, queryHistory, debugMode, performanceMonitoring, showPerformanceOverlay, logLevel, aiConfig, exportTemplates]);
 
     return null;
 }
@@ -326,12 +344,24 @@ function App() {
                 {/* Server Nested Routes */}
                 <Route path="/server/:serverId" element={<Layout><ServerContextLayout><ServerLayout /></ServerContextLayout></Layout>}>
                     <Route index element={<ServerDashboard />} />
+                    <Route path="status" element={<StatusVariables />} />
+                    <Route path="variables" element={<ServerVariables />} />
+                    <Route path="charsets" element={<Charsets />} />
                     
                     {/* Database Layout & Views */}
                     <Route path=":dbName" element={<DatabaseLayout />}>
                         <Route index element={<Structure />} />
                         <Route path="structure" element={<Structure />} />
                         <Route path="table/:tableName" element={<Browser />} />
+                        <Route path="table/:tableName/operations" element={<TableOperations />} />
+                        <Route path="table/:tableName/search" element={<Search />} />
+                        <Route path="table/:tableName/search" element={<Search />} />
+                        <Route path="table/:tableName/insert" element={<TableInsert />} />
+                        <Route path="table/:tableName/structure" element={<Structure />} />
+                        <Route path="table/:tableName/sql" element={<div className="h-full"><QueryEditor /></div>} />
+                        <Route path="table/:tableName/export" element={<Export />} />
+                        <Route path="table/:tableName/import" element={<Import />} />
+                        <Route path="table/:tableName/triggers" element={<Triggers />} />
                         <Route path="sql" element={<div className="h-full"><QueryEditor /></div>} />
                         <Route path="search" element={<Search />} />
                         <Route path="query" element={<VisualQueryBuilder onRunQuery={(sql) => console.log(sql)} />} />
@@ -348,8 +378,9 @@ function App() {
 
                 <Route path="*" element={<NotFound />} />
             </Routes>
+            <PerformanceOverlay />
+            {import.meta.env.DEV && <DebugOverlay />}
         </BrowserRouter>
-        <PerformanceOverlay />
     </QueryClientProvider>
   )
 }

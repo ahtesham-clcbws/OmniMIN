@@ -2,7 +2,8 @@ use tauri::State;
 use crate::state::AppState;
 use crate::commands::common::{mysql_to_json, render_table_html, render_pagination_html};
 use mysql_async::prelude::*;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
 
 #[derive(Serialize)]
 pub struct BrowseResultRaw {
@@ -336,8 +337,24 @@ pub async fn browse_table_html(db: String, table: String, page: u32, limit: u32,
     })
 }
 
+#[derive(Deserialize, Debug)]
+pub struct Filter {
+    pub col: String,
+    pub op: String,
+    pub val: String,
+}
+
 #[tauri::command]
-pub async fn browse_table(db: String, table: String, page: u32, limit: u32, state: State<'_, AppState>) -> Result<BrowseResultRaw, String> {
+pub async fn browse_table(
+    db: String, 
+    table: String, 
+    page: u32, 
+    limit: u32, 
+    sort_column: Option<String>,
+    sort_direction: Option<String>,
+    filters: Option<Vec<Filter>>,
+    state: State<'_, AppState>
+) -> Result<BrowseResultRaw, String> {
     let offset = (page - 1) * limit;
     
     let pool = {
@@ -346,25 +363,47 @@ pub async fn browse_table(db: String, table: String, page: u32, limit: u32, stat
     };
     let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
     
+    // Build WHERE clause
+    let mut where_clause = String::new();
+    if let Some(fs) = filters {
+        if !fs.is_empty() {
+             let conditions: Vec<String> = fs.iter().map(|f| {
+                 let safe_op = match f.op.as_str() {
+                     "=" | "!=" | ">" | "<" | ">=" | "<=" | "LIKE" | "NOT LIKE" => f.op.as_str(),
+                     _ => "=", // Fallback default
+                 };
+                 // Simple escaping for value
+                 let safe_val = f.val.replace("'", "''"); // Basic MySQL escape
+                 format!("`{}` {} '{}'", f.col, safe_op, safe_val)
+             }).collect();
+             where_clause = format!("WHERE {}", conditions.join(" AND "));
+        }
+    }
+
     // 1. Get Count
-    let count_sql = format!("SELECT count(*) FROM `{}`.`{}`", db, table);
+    let count_sql = format!("SELECT count(*) FROM `{}`.`{}` {}", db, table, where_clause);
     let count: Option<u64> = conn.query_first(count_sql).await.map_err(|e| e.to_string())?;
     let total_rows = count.unwrap_or(0);
 
-    // 2. Get Primary Key for sorting
+    // 2. Get Primary Key (needed for fallback sort or for frontend knowledge)
     let pk_query = format!("SHOW KEYS FROM `{}`.`{}` WHERE Key_name = 'PRIMARY'", db, table);
     let pk_row: Option<mysql_async::Row> = conn.query_first(pk_query).await.map_err(|e| e.to_string())?;
     
     let pk_col = pk_row.map(|row| row.get::<String, _>("Column_name").unwrap_or_default());
     
-    let order_by = if let Some(ref col_name) = pk_col {
+    // 3. Determine Sorting
+    let order_by = if let Some(col) = sort_column {
+        let dir = sort_direction.unwrap_or_else(|| "ASC".to_string()).to_uppercase();
+        let safe_dir = if dir == "DESC" { "DESC" } else { "ASC" };
+        format!("ORDER BY `{}` {}", col, safe_dir)
+    } else if let Some(ref col_name) = pk_col {
         format!("ORDER BY `{}` ASC", col_name)
     } else {
         "".to_string()
     };
 
-    // 3. Get Data
-    let sql = format!("SELECT * FROM `{}`.`{}` {} LIMIT {} OFFSET {}", db, table, order_by, limit, offset);
+    // 4. Get Data
+    let sql = format!("SELECT * FROM `{}`.`{}` {} {} LIMIT {} OFFSET {}", db, table, where_clause, order_by, limit, offset);
     let mut result = conn.query_iter(sql).await.map_err(|e| e.to_string())?;
     
     let mut columns = Vec::new();
@@ -425,6 +464,48 @@ pub async fn update_cell(
     let sql = format!(
         "UPDATE `{}`.`{}` SET `{}` = {} WHERE `{}` = {}", 
         db, table, column, val_str, primary_key_col, pk_val_str
+    );
+
+    conn.query_drop(sql).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_row(
+    db: String, 
+    table: String, 
+    row: HashMap<String, serde_json::Value>, 
+    primary_key_col: String,
+    primary_key_val: serde_json::Value,
+    state: State<'_, AppState>
+) -> Result<(), String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.as_ref().cloned().ok_or("Not connected")?
+    };
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+
+    let mut set_clauses = Vec::new();
+    for (col, val) in row {
+        let val_str = match val {
+            serde_json::Value::String(s) => format!("'{}'", s.replace("'", "''").replace("\\", "\\\\")),
+            serde_json::Value::Null => "NULL".to_string(),
+            _ => val.to_string(),
+        };
+        set_clauses.push(format!("`{}` = {}", col, val_str));
+    }
+
+    if set_clauses.is_empty() {
+        return Ok(());
+    }
+
+    let pk_val_str = match primary_key_val {
+        serde_json::Value::String(s) => format!("'{}'", s.replace("'", "''")),
+        _ => primary_key_val.to_string(),
+    };
+
+    let sql = format!(
+        "UPDATE `{}`.`{}` SET {} WHERE `{}` = {}", 
+        db, table, set_clauses.join(", "), primary_key_col, pk_val_str
     );
 
     conn.query_drop(sql).await.map_err(|e| e.to_string())
@@ -545,5 +626,194 @@ pub async fn table_maintenance(db: String, table: String, op: String, state: Sta
     }
     
     Ok(rows)
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ColumnDefinition {
+    pub name: String,
+    pub original_name: Option<String>, // For modify/rename
+    pub data_type: String, // e.g., "VARCHAR(255)" or just "VARCHAR"
+    pub length: Option<String>,
+    pub default: Option<String>,
+    pub is_nullable: bool,
+    pub auto_increment: bool,
+    pub is_primary: bool,
+    pub is_unique: bool,
+    pub comment: Option<String>,
+    pub after: Option<String>, // For positioning
+}
+
+impl ColumnDefinition {
+    fn to_sql(&self) -> String {
+        let mut sql = format!("`{}` {}", self.name, self.data_type);
+        
+        if let Some(len) = &self.length {
+            if !self.data_type.contains('(') && !len.is_empty() {
+                sql.push_str(&format!("({})", len));
+            }
+        }
+        
+        if !self.is_nullable {
+            sql.push_str(" NOT NULL");
+        } else {
+            sql.push_str(" NULL");
+        }
+        
+        if let Some(def) = &self.default {
+            if def.to_uppercase() == "NULL" {
+                sql.push_str(" DEFAULT NULL");
+            } else if def.to_uppercase() == "CURRENT_TIMESTAMP" {
+                 sql.push_str(" DEFAULT CURRENT_TIMESTAMP");
+            } else if !def.is_empty() {
+                sql.push_str(&format!(" DEFAULT '{}'", def.replace("'", "''")));
+            }
+        }
+        
+        if self.auto_increment {
+            sql.push_str(" AUTO_INCREMENT");
+        }
+        
+        if let Some(comment) = &self.comment {
+            if !comment.is_empty() {
+                sql.push_str(&format!(" COMMENT '{}'", comment.replace("'", "''")));
+            }
+        }
+        
+        sql
+    }
+}
+
+#[tauri::command]
+pub async fn add_column(db: String, table: String, col: ColumnDefinition, state: State<'_, AppState>) -> Result<(), String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.as_ref().cloned().ok_or("Not connected")?
+    };
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+
+    let mut sql = format!("ALTER TABLE `{}`.`{}` ADD COLUMN {}", db, table, col.to_sql());
+    
+    if let Some(after) = &col.after {
+        if after == "FIRST" {
+            sql.push_str(" FIRST");
+        } else if !after.is_empty() {
+             sql.push_str(&format!(" AFTER `{}`", after));
+        }
+    }
+
+    if col.is_primary {
+        sql.push_str(&format!(", ADD PRIMARY KEY (`{}`)", col.name));
+    }
+    if col.is_unique {
+        sql.push_str(&format!(", ADD UNIQUE (`{}`)", col.name));
+    }
+
+    conn.query_drop(sql).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn modify_column(db: String, table: String, col: ColumnDefinition, state: State<'_, AppState>) -> Result<(), String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.as_ref().cloned().ok_or("Not connected")?
+    };
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+
+    let original = col.original_name.clone().ok_or("Original name required for modify")?;
+    
+    let mut sql = format!("ALTER TABLE `{}`.`{}` CHANGE COLUMN `{}` {}", db, table, original, col.to_sql());
+    
+    if let Some(after) = &col.after {
+         if after == "FIRST" {
+            sql.push_str(" FIRST");
+        } else if !after.is_empty() {
+             sql.push_str(&format!(" AFTER `{}`", after));
+        }
+    }
+    
+    conn.query_drop(sql).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn drop_column(db: String, table: String, column: String, state: State<'_, AppState>) -> Result<(), String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.as_ref().cloned().ok_or("Not connected")?
+    };
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+
+
+    let sql = format!("ALTER TABLE `{}`.`{}` DROP COLUMN `{}`", db, table, column);
+    conn.query_drop(sql).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn insert_rows(db: String, table: String, rows: Vec<HashMap<String, String>>, state: State<'_, AppState>) -> Result<(), String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.as_ref().cloned().ok_or("Not connected")?
+    };
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    // Assume all rows have the same keys, taken from the first row
+    let columns: Vec<String> = rows[0].keys().cloned().collect();
+    let col_list = columns.iter().map(|c| format!("`{}`", c)).collect::<Vec<_>>().join(", ");
+
+    let mut values_parts: Vec<String> = Vec::new();
+    
+    for row in rows {
+        let mut row_vals: Vec<String> = Vec::new();
+        for col in &columns {
+             if let Some(val) = row.get(col) {
+                 if val.to_uppercase() == "NULL" {
+                     row_vals.push("NULL".to_string());
+                 } else {
+                     // Basic escaping - for production a prepared statement loop is safer but this matches the current query architecture
+                     row_vals.push(format!("'{}'", val.replace("'", "''").replace("\\", "\\\\")));
+                 }
+             } else {
+                 row_vals.push("NULL".to_string());
+             }
+        }
+        values_parts.push(format!("({})", row_vals.join(", ")));
+    }
+    
+    let sql = format!(
+        "INSERT INTO `{}`.`{}` ({}) VALUES {}", 
+        db, table, col_list, values_parts.join(", ")
+    );
+
+    conn.query_drop(sql).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_rows(db: String, table: String, primary_key: String, ids: Vec<String>, state: State<'_, AppState>) -> Result<(), String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.as_ref().cloned().ok_or("Not connected")?
+    };
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    // Escape IDs to prevent injection
+    // Assuming IDs are string representations. 
+    // If integer ids are sent as strings, this is safe. 
+    // If strings with quotes, we replace.
+    let escaped_ids: Vec<String> = ids.iter()
+        .map(|id| format!("'{}'", id.replace("'", "''")))
+        .collect();
+        
+    let id_list = escaped_ids.join(", ");
+    
+    let sql = format!("DELETE FROM `{}`.`{}` WHERE `{}` IN ({})", db, table, primary_key, id_list);
+    
+    conn.query_drop(sql).await.map_err(|e| e.to_string())
 }
 

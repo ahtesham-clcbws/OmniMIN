@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { Play, Loader2, Clock, Trash2, Database, AlertTriangle, Download, FileJson, Terminal, History as HistoryIcon, Code2, Sparkles, Eraser, Save, Info } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { Play, Loader2, Clock, Trash2, Database, AlertTriangle, Download, FileJson, Terminal, History as HistoryIcon, Code2, Sparkles, Eraser, Save, Info, Activity } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { dbApi } from '@/api/db';
 import { cn } from '@/lib/utils';
@@ -11,58 +11,107 @@ import { AIAssistant } from '../ai/AIAssistant';
 import { AIExplanationModal } from '../ai/AIExplanationModal';
 import { v4 as uuidv4 } from 'uuid';
 import { Button } from '@/components/ui/button';
-
+import CodeMirror from '@uiw/react-codemirror';
+import { sql, StandardSQL } from '@codemirror/lang-sql';
+import { QueryResult } from '@/api/commands';
+import { EditorView } from '@codemirror/view';
+import { format } from 'sql-formatter';
 
 export function QueryEditor() {
-    const { currentDb, currentTable, queryHistory, addHistory } = useAppStore();
-    const [mode, setMode] = useState<'editor' | 'explain'>('editor'); // Removed 'builder'
-    const [sql, setSql] = useState('SELECT * FROM ');
-    const [lastResult, setLastResult] = useState<any>(null);
+    const { currentDb, currentTable, queryHistory, addHistory, theme } = useAppStore();
+    const [mode, setMode] = useState<'editor' | 'explain'>('editor');
+    const [sqlCode, setSqlCode] = useState('SELECT * FROM ');
+    const [results, setResults] = useState<QueryResult[]>([]);
+    const [lastResultIndex, setLastResultIndex] = useState(0);
+    const [error, setError] = useState<any>(null);
     const [delimiter, setDelimiter] = useState(';');
 
     const [showSnippets, setShowSnippets] = useState(false);
-    const [saveModalOpen, setSaveModalOpen] = useState(false);
-    const [snippetName, setSnippetName] = useState('');
-
+    
     // AI State
     const [showAI, setShowAI] = useState(false);
     const [showExplainAI, setShowExplainAI] = useState(false);
+
+    // Schema for Auto-complete
+    const [schemaTables, setSchemaTables] = useState<Record<string, string[]>>({});
+
+    useEffect(() => {
+        const fetchSchema = async () => {
+            if (!currentDb) return;
+            try {
+                const tables = await dbApi.getTables(currentDb);
+                const schema: Record<string, string[]> = {};
+                
+                // Initialize tables
+                tables.forEach(t => schema[t.name] = []);
+
+                // Fetch columns for current table if selected
+                if (currentTable) {
+                    const cols = await dbApi.getColumns(currentDb, currentTable);
+                    if (Array.isArray(cols)) {
+                         // @ts-ignore
+                        schema[currentTable] = cols.map((c: any) => c.field);
+                    }
+                }
+                setSchemaTables(schema);
+            } catch (error) {
+                console.error("Failed to fetch schema for autocomplete", error);
+            }
+        };
+        fetchSchema();
+    }, [currentDb, currentTable]);
 
     // Mutation for executing SQL
     const { mutate: runQuery, isPending } = useMutation({
         mutationFn: async (sqlCmd: string) => {
             if (!currentDb) throw new Error("No database selected");
-            return dbApi.executeQuery(currentDb, sqlCmd);
+            
+            // SQL Cleanup: remove common trailing errors
+            let cleanedSql = sqlCmd.trim();
+            // 1. Remove trailing comma if it's right before a semicolon or at the very end
+            cleanedSql = cleanedSql.replace(/,\s*;$/g, ';');
+            cleanedSql = cleanedSql.replace(/,\s*$/g, '');
+            // 2. Remove trailing comma before common keywords (simple regex)
+            cleanedSql = cleanedSql.replace(/,\s+(WHERE|GROUP|ORDER|LIMIT)/gi, ' $1');
+
+            return dbApi.executeQuery(currentDb, cleanedSql);
         },
         onSuccess: (data, variables) => {
-            setLastResult({ data, sql: variables, error: null });
+            setResults(Array.isArray(data) ? data : [data]);
+            setLastResultIndex(0);
+            setError(null);
             addHistory(variables);
         },
-        onError: (error) => {
-             setLastResult({ data: null, error: error, sql: null });
+        onError: (err) => {
+             setError(err);
+             setResults([]);
         }
     });
 
     const handleRunQuery = (sqlToRun?: string) => {
-        const query = sqlToRun || sql;
+        const query = sqlToRun || sqlCode;
         if (!query.trim()) return;
         runQuery(query);
     };
 
     const handleExplain = () => {
-        if (!sql.trim()) return;
+        if (!sqlCode.trim()) return;
         setMode('explain');
     };
 
     const handleFormat = () => {
-        // Placeholder for formatting logic
-        console.log("Formatting SQL:", sql);
-        // In a real app, you'd send 'sql' to a formatter service/library
-        // and update setSql(formattedSql)
+        if (!sqlCode.trim()) return;
+        try {
+            const formatted = format(sqlCode, { language: 'mysql', keywordCase: 'upper' });
+            setSqlCode(formatted);
+        } catch (e) {
+            console.error("Formatting failed", e);
+            // Optional: show toast error
+        }
     };
 
     const handleClear = () => {
-        setSql('');
+        setSqlCode('');
     };
 
     if (!currentDb) {
@@ -72,9 +121,51 @@ export function QueryEditor() {
         </div>
     }
 
-    const results = lastResult?.data;
-    const error = lastResult?.error;
-    const isExecuting = isPending; // Renamed for clarity with new toolbar
+    const isExecuting = isPending;
+
+    // Custom SQL Extension configuration
+    const sqlExtension = sql({
+        dialect: StandardSQL,
+        schema: schemaTables
+    });
+
+    // Custom dark theme for CodeMirror to match app
+    const customTheme = EditorView.theme({
+        "&": {
+            backgroundColor: "transparent !important",
+            height: "100%",
+            fontSize: "14px",
+        },
+        ".cm-content": {
+            caretColor: "rgba(255, 255, 255, 0.8)",
+            color: "rgba(255, 255, 255, 0.9)",
+            fontFamily: "monospace"
+        },
+        ".cm-gutters": {
+            backgroundColor: "transparent",
+            color: "rgba(255, 255, 255, 0.3)",
+            border: "none"
+        },
+        ".cm-activeLine": {
+            backgroundColor: "rgba(255, 255, 255, 0.05)"
+        },
+        ".cm-activeLineGutter": {
+            backgroundColor: "transparent",
+            color: "rgba(255, 255, 255, 0.8)"
+        },
+        // Complete dropdown customization
+        ".cm-tooltip": {
+            backgroundColor: "#1e1e1e",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: "6px"
+        },
+        ".cm-tooltip-autocomplete": {
+            "& > ul > li[aria-selected]": {
+                backgroundColor: "#2d2d2d",
+                color: "#fff"
+            }
+        }
+    }, { dark: true });
 
     return (
         <div className="flex h-full">
@@ -92,7 +183,6 @@ export function QueryEditor() {
                         <Code2 size={14} /> SQL Editor
                     </button>
                     <div className="w-px h-3 bg-border mx-1" />
-                    {/* Removed Visual Builder button */}
                     <button 
                         onClick={() => mode === 'explain' ? setMode('editor') : handleExplain()}
                         className={cn(
@@ -128,28 +218,28 @@ export function QueryEditor() {
                                     <div className="h-4 w-px bg-white/10 mx-2" />
                                     <div className="flex bg-black/20 rounded p-0.5 gap-0.5">
                                         <button 
-                                            onClick={() => setSql(`SELECT * FROM \`${currentTable || 'table'}\` WHERE 1;`)}
+                                            onClick={() => setSqlCode(`SELECT * FROM \`${currentTable || 'table'}\` WHERE 1;`)}
                                             className="px-2 py-0.5 text-[10px] font-bold text-text-muted hover:text-primary hover:bg-white/10 rounded transition-colors"
                                             title="SELECT *"
                                         >
                                             SELECT *
                                         </button>
                                         <button 
-                                            onClick={() => setSql(`INSERT INTO \`${currentTable || 'table'}\` (\`id\`) VALUES ('val');`)}
+                                            onClick={() => setSqlCode(`INSERT INTO \`${currentTable || 'table'}\` (\`id\`) VALUES ('val');`)}
                                             className="px-2 py-0.5 text-[10px] font-bold text-text-muted hover:text-primary hover:bg-white/10 rounded transition-colors"
                                             title="INSERT"
                                         >
                                             INSERT
                                         </button>
                                         <button 
-                                            onClick={() => setSql(`UPDATE \`${currentTable || 'table'}\` SET \`id\`='val' WHERE 1;`)}
+                                            onClick={() => setSqlCode(`UPDATE \`${currentTable || 'table'}\` SET \`id\`='val' WHERE 1;`)}
                                             className="px-2 py-0.5 text-[10px] font-bold text-text-muted hover:text-primary hover:bg-white/10 rounded transition-colors"
                                             title="UPDATE"
                                         >
                                             UPDATE
                                         </button>
                                         <button 
-                                            onClick={() => setSql(`DELETE FROM \`${currentTable || 'table'}\` WHERE 0;`)}
+                                            onClick={() => setSqlCode(`DELETE FROM \`${currentTable || 'table'}\` WHERE 0;`)}
                                             className="px-2 py-0.5 text-[10px] font-bold text-text-muted hover:text-red-400 hover:bg-white/10 rounded transition-colors"
                                             title="DELETE"
                                         >
@@ -183,7 +273,7 @@ export function QueryEditor() {
                                        size="sm" 
                                        className="h-7 px-4 text-[11px] font-bold bg-primary hover:bg-primary/90"
                                        onClick={() => handleRunQuery()}
-                                       disabled={!sql.trim() || isExecuting}
+                                       disabled={!sqlCode.trim() || isExecuting}
                                    >
                                        {isExecuting ? <Loader2 className="animate-spin mr-1.5" size={12}/> : <Play size={12} className="mr-1.5 fill-current" />}
                                        Run
@@ -191,20 +281,46 @@ export function QueryEditor() {
                                </div>
                            </div>
 
-                           <div className="flex-1 relative group">
-                               <textarea
-                                   value={sql}
-                                   onChange={(e) => setSql(e.target.value)}
-                                   className="absolute inset-0 w-full h-full bg-transparent p-4 font-mono text-sm outline-none resize-none text-blue-300 placeholder-white/10"
-                                   placeholder="SELECT * FROM table WHERE..."
-                                   spellCheck={false}
-                               />
+                           <div className="flex-1 relative group overflow-hidden">
+                                <CodeMirror
+                                    value={sqlCode}
+                                    height="100%"
+                                    extensions={[sqlExtension, customTheme]}
+                                    onChange={(val) => setSqlCode(val)}
+                                    className="h-full text-base"
+                                    basicSetup={{
+                                        lineNumbers: true,
+                                        highlightActiveLineGutter: true,
+                                        highlightSpecialChars: true,
+                                        history: true,
+                                        foldGutter: true,
+                                        drawSelection: true,
+                                        dropCursor: true,
+                                        allowMultipleSelections: true,
+                                        indentOnInput: true,
+                                        syntaxHighlighting: true,
+                                        bracketMatching: true,
+                                        closeBrackets: true,
+                                        autocompletion: true,
+                                        
+                                        crosshairCursor: true,
+                                        highlightActiveLine: true,
+                                        highlightSelectionMatches: true,
+                                        closeBracketsKeymap: true,
+                                        defaultKeymap: true,
+                                        searchKeymap: true,
+                                        historyKeymap: true,
+                                        foldKeymap: true,
+                                        completionKeymap: true,
+                                        lintKeymap: true,
+                                    }}
+                                />
                            </div>
                        </div>
-                   ) : ( // Removed 'builder' mode condition
+                   ) : (
                         <div className="absolute inset-0 z-10 bg-canvas">
                             {/* @ts-ignore */}
-                            <VisualExplain sql={sql} db={currentDb} />
+                            <VisualExplain sql={sqlCode} db={currentDb} />
                         </div>
                    )}
                 </div>
@@ -218,44 +334,93 @@ export function QueryEditor() {
                                 <div className="font-mono text-xs opacity-80">{String(error)}</div>
                             </div>
                         </div>
-                    ) : results ? (
-                        <div className="min-w-full inline-block align-middle">
-                             {results.rows ? (
-                                <>
-                                    <div className="sticky top-0 bg-surface shadow-sm z-10 px-4 py-2 text-xs text-text-muted border-b border-border flex justify-between items-center">
-                                        <span>{results.rows.length} rows in set ({results.duration}ms)</span>
-                                        <div className="flex gap-2">
-                                            <button className="hover:text-text-main flex items-center gap-1"><Download size={12}/> CSV</button>
-                                            <button className="hover:text-text-main flex items-center gap-1"><FileJson size={12}/> JSON</button>
+                    ) : results.length > 0 ? (
+                        <div className="h-full flex flex-col">
+                            {/* Result Set Switcher */}
+                            {results.length > 1 && (
+                                <div className="flex-shrink-0 bg-surface border-b border-border p-1 flex items-center gap-1 overflow-x-auto no-scrollbar">
+                                    {results.map((r, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => setLastResultIndex(idx)}
+                                            className={cn(
+                                                "px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition-all whitespace-nowrap border",
+                                                lastResultIndex === idx 
+                                                    ? "bg-primary/20 text-primary border-primary/40" 
+                                                    : "text-text-muted border-transparent hover:bg-white/5"
+                                            )}
+                                        >
+                                            Result #{idx + 1} ({r.columns.length > 0 ? r.rows.length : r.affected_rows})
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Metadata / Profiling Header */}
+                            <div className="flex-shrink-0 sticky top-0 bg-surface shadow-sm z-10 px-4 py-2 text-[10px] text-text-muted border-b border-border flex justify-between items-center bg-canvas/80 backdrop-blur-md">
+                                <div className="flex items-center gap-4">
+                                     <span className="flex items-center gap-1 uppercase tracking-tighter">
+                                        <Clock size={12} className="opacity-50" /> 
+                                        {results[lastResultIndex].duration_ms.toFixed(2)}ms
+                                     </span>
+                                     <span className="flex items-center gap-1 uppercase tracking-tighter">
+                                        <Activity size={12} className="opacity-50" /> 
+                                        {results[lastResultIndex].columns.length > 0
+                                            ? `${results[lastResultIndex].rows.length} rows` 
+                                            : `${results[lastResultIndex].affected_rows} affected`}
+                                     </span>
+                                     {results[lastResultIndex].last_insert_id > 0 && (
+                                         <span className="flex items-center gap-1 uppercase tracking-tighter text-secondary">
+                                            ID: {results[lastResultIndex].last_insert_id}
+                                         </span>
+                                     )}
+                                </div>
+                                <div className="flex gap-2">
+                                    <button className="hover:text-text-main flex items-center gap-1 transition-colors"><Download size={12}/> CSV</button>
+                                    <button className="hover:text-text-main flex items-center gap-1 transition-colors"><FileJson size={12}/> JSON</button>
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-auto min-w-full inline-block align-middle">
+                                {results[lastResultIndex].columns.length > 0 ? (
+                                    <table className="w-full text-left border-collapse">
+                                        <thead className="sticky top-0 bg-surface shadow-sm z-10">
+                                            <tr>
+                                                {results[lastResultIndex].columns.map((col: string, i: number) => (
+                                                    <th key={i} className="p-2 px-3 border-b border-border font-mono text-primary font-bold text-xs bg-canvas/40 backdrop-blur-sm whitespace-nowrap">{col}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="font-mono text-[11px]">
+                                            {results[lastResultIndex].rows.map((row: any[], i: number) => (
+                                                <tr key={i} className="hover:bg-white/5 border-b border-border/30 transition-colors">
+                                                    {row.map((val: any, j: number) => (
+                                                        <td key={j} className="p-2 px-3 border-r border-border/30 max-w-[400px] truncate opacity-80 text-text-main">
+                                                            {val === null ? <span className="text-text-muted italic opacity-50">NULL</span> : String(val)}
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <div className="p-12 text-center">
+                                        <div className="bg-primary/5 border border-primary/20 inline-flex flex-col items-center p-6 rounded-2xl gap-3">
+                                            <div className="p-3 bg-primary/20 rounded-xl text-primary">
+                                                 <Activity size={32} />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-lg text-text-main">Success</h3>
+                                                <p className="text-xs text-text-muted opacity-80 mt-1">
+                                                    Command executed successfully.
+                                                    <br />
+                                                    Affected rows: {results[lastResultIndex].affected_rows}
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
-                                    <table className="w-full text-left border-collapse">
-                                         <thead className="sticky top-[33px] bg-surface shadow-sm z-10">
-                                             <tr>
-                                                 {results.columns.map((col: string, i: number) => (
-                                                     <th key={i} className="p-2 border-b border-border font-mono text-primary font-normal">{col}</th>
-                                                 ))}
-                                             </tr>
-                                         </thead>
-                                         <tbody className="font-mono text-xs">
-                                             {results.rows.map((row: any[], i: number) => (
-                                                 <tr key={i} className="hover:bg-hover-bg border-b border-border">
-                                                     {row.map((val: any, j: number) => (
-                                                         <td key={j} className="p-2 border-r border-border max-w-[300px] truncate opacity-80 text-text-main">
-                                                             {val === null ? <span className="text-text-muted italic">NULL</span> : String(val)}
-                                                         </td>
-                                                     ))}
-                                                 </tr>
-                                             ))}
-                                         </tbody>
-                                    </table>
-                                </>
-                             ) : (
-                                 <div className="p-8 text-center text-green-400">
-                                     <div className="font-bold mb-2">Query Executed Successfully</div>
-                                     <div className="text-xs opacity-70">Affected Rows: {results.affected_rows}</div>
-                                 </div>
-                             )}
+                                )}
+                            </div>
                         </div>
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full text-text-muted opacity-50 gap-4">
@@ -263,28 +428,7 @@ export function QueryEditor() {
                             <p>Write a query and hit Run</p>
                         </div>
                     )}
-                     {/* Snippet Library Overlay/Sidebar */}
-                 <SnippetLibrary 
-                    isOpen={showSnippets} 
-                    onClose={() => setShowSnippets(false)}
-                    onSelect={(s) => setSql(s)}
-                    onRun={(s) => { setSql(s); handleRunQuery(s); }}
-                />
-
-                {/* AI Assistant Overlay */}
-                <AIAssistant 
-                    isOpen={showAI}
-                    onClose={() => setShowAI(false)}
-                    onInsertSql={(s) => setSql(s)}
-                />
-
-                {showExplainAI && (
-                    <AIExplanationModal 
-                        sql={sql} 
-                        onClose={() => setShowExplainAI(false)} 
-                    />
-                )}
-            </div>
+                </div>
             </div>
 
             {/* R: History Sidebar */}
@@ -298,7 +442,7 @@ export function QueryEditor() {
                             key={i} 
                             className="p-3 border-b border-border hover:bg-hover-bg cursor-pointer group"
                             onClick={() => {
-                                setSql(item.sql);
+                                setSqlCode(item.sql);
                                 setMode('editor');
                             }}
                          >
@@ -315,6 +459,28 @@ export function QueryEditor() {
                      )}
                  </div>
             </div>
+
+            {/* Snippet Library Overlay/Sidebar */}
+            <SnippetLibrary 
+                isOpen={showSnippets} 
+                onClose={() => setShowSnippets(false)}
+                onSelect={(s) => setSqlCode(s)}
+                onRun={(s) => { setSqlCode(s); handleRunQuery(s); }}
+            />
+
+            {/* AI Assistant Overlay */}
+            <AIAssistant 
+                isOpen={showAI}
+                onClose={() => setShowAI(false)}
+                onInsertSql={(s) => setSqlCode(s)}
+            />
+
+            {showExplainAI && (
+                <AIExplanationModal 
+                    sql={sqlCode} 
+                    onClose={() => setShowExplainAI(false)} 
+                />
+            )}
         </div>
     );
 }

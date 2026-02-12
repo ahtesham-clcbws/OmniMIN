@@ -40,7 +40,15 @@ export function Designer() {
     // Effect: Create Edges from Relations
     React.useEffect(() => {
         if (relations) {
-            const newEdges = relations.map((rel: any[], i: number) => ({
+            // Only create edges if both source and target tables have loaded columns
+            // to prevent "Couldn't create edge for source handle id" errors
+            const loadedTables = new Set(loadedSchemas.map(s => s.table));
+
+            const validRelations = relations.filter((rel: any[]) => 
+                loadedTables.has(rel[0]) && loadedTables.has(rel[2])
+            );
+
+            const newEdges = validRelations.map((rel: any[], i: number) => ({
                 id: `e-${rel[0]}-${rel[1]}-${rel[2]}-${rel[3]}`,
                 source: rel[0],      // Table Name
                 sourceHandle: rel[1], // Column Name
@@ -51,7 +59,8 @@ export function Designer() {
             }));
             setEdges(newEdges);
         }
-    }, [relations, setEdges]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(relations), JSON.stringify(loadedSchemas), setEdges]);
 
     // Effect: Initialize Nodes when tables loaded
     React.useEffect(() => {
@@ -64,7 +73,8 @@ export function Designer() {
             }));
             setNodes(newNodes);
         }
-    }, [tables, setNodes, nodes.length]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(tables), setNodes, nodes.length]);
 
     // Effect: Update Nodes when columns load
     React.useEffect(() => {
@@ -77,7 +87,8 @@ export function Designer() {
                 return node;
             }));
         }
-    }, [loadedSchemas, setNodes]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(loadedSchemas), setNodes]);
 
     if (!currentDb) return <div className="p-12 text-center opacity-50">Select a database</div>;
     if (loadingTables) return <div className="p-12 text-center flex justify-center"><Loader2 className="animate-spin" /></div>;

@@ -14,6 +14,21 @@ interface QueryHistoryItem {
   timestamp: Date;
 }
 
+export interface AIConfig {
+    provider: 'ollama' | 'gemini' | 'openai' | 'disabled';
+    apiKey?: string;
+    model: string;
+    endpoint?: string;
+    temperature?: number;
+    maxTokens?: number;
+}
+
+export interface ExportTemplate {
+    id: string;
+    name: string;
+    options: any; // Using any for flexibility with JSON
+}
+
 interface AppState {
   theme: 'dark' | 'light' | 'ultra-light' | 'neo';
   accentColor: string;
@@ -30,6 +45,11 @@ interface AppState {
   currentDb: string | null;
   currentTable: string | null;
   queryHistory: QueryHistoryItem[];
+
+  // Export Templates
+  exportTemplates: ExportTemplate[];
+  addExportTemplate: (template: ExportTemplate) => void;
+  removeExportTemplate: (id: string) => void;
 
   // Colors
   customColors: { id: string; hex: string; label: string }[];
@@ -80,6 +100,10 @@ interface AppState {
   setShowPerformanceOverlay: (show: boolean) => void;
   setLogLevel: (level: 'debug' | 'info' | 'warn' | 'error') => void;
 
+  // AI Configuration
+  aiConfig: AIConfig;
+  setAIConfig: (config: AIConfig) => void;
+
   setCurrentServer: (server: ServerConfig | null) => void;
   setCurrentDb: (db: string | null) => void;
   setCurrentTable: (table: string | null) => void;
@@ -117,6 +141,16 @@ export const useAppStore = create<AppState>((set, get) => ({
           performanceMonitoring: prefs.performanceMonitoring ?? false,
           showPerformanceOverlay: prefs.showPerformanceOverlay ?? false,
           logLevel: prefs.logLevel ?? 'info',
+          // AI Config
+          aiConfig: prefs.ai_config || {
+            provider: 'disabled',
+            model: 'llama3',
+            endpoint: 'http://localhost:11434',
+            temperature: 0.3,
+            maxTokens: 2048
+          },
+          // Export Templates
+          exportTemplates: prefs.export_templates || [],
       }),
 
       setTheme: (theme) => set({ theme }),
@@ -154,6 +188,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       setPerformanceMonitoring: (enabled) => set({ performanceMonitoring: enabled }),
       setShowPerformanceOverlay: (show) => set({ showPerformanceOverlay: show }),
       setLogLevel: (level) => set({ logLevel: level }),
+
+      // AI Config
+      aiConfig: {
+        provider: 'disabled',
+        model: 'llama3',
+        endpoint: 'http://localhost:11434',
+        temperature: 0.3,
+        maxTokens: 2048
+      },
+      setAIConfig: (config) => set({ aiConfig: config }),
+
+      // Export Templates
+      exportTemplates: [],
+      addExportTemplate: (template) => set((state) => ({
+          exportTemplates: [...state.exportTemplates, template]
+      })),
+      removeExportTemplate: (id) => set((state) => ({
+          exportTemplates: state.exportTemplates.filter(t => t.id !== id)
+      })),
 
       setCurrentServer: (currentServer) => set({ currentServer }),
       setCurrentDb: (currentDb) => set({ currentDb }),

@@ -5,9 +5,16 @@ pub fn mysql_to_json(val: mysql_async::Value) -> serde_json::Value {
     match val {
         mysql_async::Value::NULL => serde_json::Value::Null,
         mysql_async::Value::Bytes(b) => {
-            String::from_utf8(b)
-                .map(serde_json::Value::String)
-                .unwrap_or_else(|_| serde_json::Value::Null)
+            match String::from_utf8(b.clone()) {
+                Ok(s) => serde_json::Value::String(s),
+                Err(_) => {
+                    // Not valid UTF-8, assume binary/blob
+                    use base64::{Engine as _, engine::general_purpose};
+                    let encoded = general_purpose::STANDARD.encode(&b);
+                    // We prefix it so frontend knows it is binary
+                    serde_json::Value::String(format!("_binary_base64:{}", encoded))
+                }
+            }
         }
         mysql_async::Value::Int(i) => serde_json::Value::Number(i.into()),
         mysql_async::Value::UInt(u) => serde_json::Value::Number(u.into()),

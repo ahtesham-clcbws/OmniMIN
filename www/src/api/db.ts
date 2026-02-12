@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { TauriCommands, CommandName } from './commands';
+import { TauriCommands, CommandName, QueryResult } from './commands';
 
 // Re-export types for consumers
 export type { Database, Table, BrowseResult, SavedServer } from './commands';
@@ -26,6 +26,22 @@ async function safeInvoke<K extends CommandName>(
 
 
 export const dbApi = {
+    getStatusVariables: async (filter?: string) => {
+        return safeInvoke('get_status_variables', { filter });
+    },
+
+    getServerVariables: async (filter?: string) => {
+        return safeInvoke('get_server_variables', { filter });
+    },
+
+    getCharsets: async () => {
+        return safeInvoke('get_charsets');
+    },
+
+    getCollationsFull: async () => {
+        return safeInvoke('get_collations_full');
+    },
+
     getDatabases: async () => {
         return safeInvoke('get_databases');
     },
@@ -42,12 +58,20 @@ export const dbApi = {
         return safeInvoke('browse_table_html', { db, table, page, limit });
     },
 
-    browseTableRaw: async (db: string, table: string, page: number, limit: number) => {
-        return safeInvoke('browse_table', { db, table, page, limit });
+    browseTableRaw: async (db: string, table: string, page: number, limit: number, sortColumn?: string, sortDirection?: string, filters?: import('./commands').Filter[]) => {
+        return safeInvoke('browse_table', { db, table, page, limit, sort_column: sortColumn, sort_direction: sortDirection, filters });
     },
 
     updateCell: async (db: string, table: string, column: string, value: any, pk_col: string, pk_val: any) => {
         return safeInvoke('update_cell', { db, table, column, value, primary_key_col: pk_col, primary_key_val: pk_val });
+    },
+
+    updateRow: async (db: string, table: string, row: Record<string, any>, pk_col: string, pk_val: any) => {
+        return safeInvoke('update_row', { db, table, row, primary_key_col: pk_col, primary_key_val: pk_val });
+    },
+
+    insertRows: async (db: string, table: string, rows: Record<string, any>[]) => {
+        return safeInvoke('insert_rows', { db, table, rows });
     },
 
     executeQuery: async (db: string, query: string, options?: any) => {
@@ -58,19 +82,17 @@ export const dbApi = {
         return safeInvoke('get_process_list');
     },
 
-    getStatusVariables: async (filter?: string) => {
-        return safeInvoke('get_status_variables', { filter });
-    },
 
-    getServerVariables: async (filter?: string) => {
-        return safeInvoke('get_server_variables', { filter });
-    },
 
     getMonitorData: async () => {
         return safeInvoke('get_monitor_data');
     },
 
-    getRelations: async (db: string) => {
+    getServerStatus: async () => {
+        return safeInvoke('get_server_status');
+    },
+
+    getRelations: async (db: string): Promise<QueryResult> => {
         const sql = `
             SELECT 
                 TABLE_NAME, 
@@ -83,10 +105,11 @@ export const dbApi = {
                 TABLE_SCHEMA = '${db}' 
                 AND REFERENCED_TABLE_NAME IS NOT NULL;
         `;
-        return safeInvoke('execute_query', { db, sql });
+        const res = await safeInvoke('execute_query', { db, sql });
+        return res[0];
     },
 
-    getServerStats: async () => {
+    getServerStats: async (): Promise<QueryResult> => {
         // Fetch most things in one go, but uptime is tricky. 
         // We'll use a safer query that works on most MySQL/MariaDB.
         const sql = `
@@ -98,25 +121,25 @@ export const dbApi = {
         `;
         // Note: global_status might not be enabled or named differently.
         // Fallback to purely VERSION/USER/DB first if it fails.
-        return safeInvoke('execute_query', { sql }).catch(() => {
-             return safeInvoke('execute_query', { sql: "SELECT VERSION() as version, 0 as uptime, CURRENT_USER() as user, '' as current_db" });
+        return safeInvoke('execute_query', { sql }).then(r => r[0]).catch(() => {
+             return safeInvoke('execute_query', { sql: "SELECT VERSION() as version, 0 as uptime, CURRENT_USER() as user, '' as current_db" }).then(r => r[0]);
         });
     },
 
     getCreateTable: async (db: string, table: string) => {
         const res = await safeInvoke('execute_query', { db, sql: `SHOW CREATE TABLE \`${table}\`` });
-        return res.rows?.[0]?.[1] || ''; // Row 0, Col 1 contains the Create Table SQL
+        return res[0].rows?.[0]?.[1] || ''; // Row 0, Col 1 contains the Create Table SQL
     },
 
     getProcedures: async (db: string) => {
         const sql = `SHOW PROCEDURE STATUS WHERE Db = '${db}'`;
-        return safeInvoke('execute_query', { db, sql });
+        return safeInvoke('execute_query', { db, sql }).then(r => r[0]);
     },
 
     runMaintenance: async (db: string, tables: string[], operation: 'CHECK' | 'ANALYZE' | 'REPAIR' | 'OPTIMIZE') => {
         const tableList = tables.map(t => `\`${t}\``).join(',');
         const sql = `${operation} TABLE ${tableList}`;
-        return safeInvoke('execute_query', { db, sql });
+        return safeInvoke('execute_query', { db, sql }).then(r => r[0]);
     },
 
     // Server Management
@@ -132,7 +155,11 @@ export const dbApi = {
         return safeInvoke('save_server_local', { server });
     },
 
-    deleteServer: async (id: string) => {
+    async getForeignKeys(db: string, table: string) {
+        return safeInvoke('get_foreign_keys', { db, table });
+    },
+
+    async deleteServer(id: string) {
         return safeInvoke('delete_server_local', { id });
     },
 
@@ -221,6 +248,45 @@ export const dbApi = {
 
     dropRoutine: async (db: string, name: string, type: 'PROCEDURE' | 'FUNCTION') => {
         return safeInvoke('drop_routine', { db, name, routineType: type });
+    },
+
+    // Triggers
+    getTriggers: async (db: string) => {
+        return safeInvoke('get_triggers', { db });
+    },
+    
+    createTrigger: async (db: string, name: string, table: string, time: string, event: string, statement: string) => {
+        return safeInvoke('create_trigger', { db, name, table, time, event, statement });
+    },
+
+    dropTrigger: async (db: string, name: string) => {
+        return safeInvoke('drop_trigger', { db, name });
+    },
+
+    // Events
+    getEvents: async (db: string) => {
+        return safeInvoke('get_events', { db });
+    },
+
+    createEvent: async (db: string, name: string, schedule: string, status: string, statement: string) => {
+        return safeInvoke('create_event', { db, name, schedule, status, statement });
+    },
+
+    dropEvent: async (db: string, name: string) => {
+        return safeInvoke('drop_event', { db, name });
+    },
+
+    // Indexes
+    getIndexes: async (db: string, table: string) => {
+        return safeInvoke('get_indexes', { db, table });
+    },
+
+    addIndex: async (db: string, table: string, name: string, columns: string[], type: string) => {
+        return safeInvoke('add_index', { db, table, indexName: name, columns, indexType: type });
+    },
+
+    dropIndex: async (db: string, table: string, name: string) => {
+        return safeInvoke('drop_index', { db, table, name });
     },
 
     // Search

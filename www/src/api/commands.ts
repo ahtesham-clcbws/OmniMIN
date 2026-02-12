@@ -15,6 +15,69 @@ export interface SavedServer {
     auto_connect?: boolean;
 }
 
+export interface TriggerInfo {
+    name: string;
+    event: string;
+    table: string;
+    timing: string;
+    created?: string;
+}
+
+export interface EventInfo {
+    name: string;
+    schedule: string;
+    status: string;
+    starts?: string;
+    ends?: string;
+}
+
+export interface IndexInfo {
+    name: string;
+    column: string;
+    non_unique: boolean;
+    seq_in_index: number;
+    index_type: string;
+    is_primary: boolean;
+}
+
+export interface StatusVar {
+    variable_name: string;
+    value: string;
+}
+
+export interface Charset {
+    charset: string;
+    description: string;
+    default_collation: string;
+    maxlen: number;
+}
+
+export interface Collation {
+    collation: string;
+    charset: string;
+    id: number;
+    is_default: string;
+    is_compiled: string;
+    sortlen: number;
+}
+
+
+export interface ForeignKeyRel {
+    name: string;
+    column: string;
+    ref_db: string;
+    ref_table: string;
+    ref_column: string;
+    on_delete: string;
+    on_update: string;
+}
+
+export interface Filter {
+    col: string;
+    op: string;
+    val: string;
+}
+
 export interface Database {
     name: string;
     size?: number; // Rust returns u64
@@ -114,9 +177,12 @@ export type TauriCommands = {
     'delete_server_local': [{ id: string }, SavedServer[]];
     'connect_db': [{ config: any }, string];
     'get_process_list': [undefined, any[]];
-    'get_status_variables': [{ filter?: string }, any[]]; 
-    'get_server_variables': [{ filter?: string }, any[]]; 
+    'get_status_variables': [{ filter?: string }, StatusVar[]]; 
+    'get_server_variables': [{ filter?: string }, StatusVar[]]; 
+    'get_charsets': [undefined, Charset[]];
+    'get_collations_full': [undefined, Collation[]];
     'get_monitor_data': [undefined, MonitorData];
+    'get_server_status': [undefined, ServerStatus];
 
     // Database
     'get_databases': [undefined, Database[]];
@@ -131,7 +197,7 @@ export type TauriCommands = {
     // Table
     'get_tables': [{ db: string }, Table[]];
     'get_tables_html': [{ db: string, table?: string }, any]; // Returns TablesResultHtml
-    'browse_table': [{ db: string, table: string, page: number, limit: number }, BrowseResultRaw];
+    'browse_table': [{ db: string, table: string, page: number, limit: number, sort_column?: string, sort_direction?: string, filters?: Filter[] }, BrowseResultRaw];
     'browse_table_html': [{ db: string, table: string, page: number, limit: number }, BrowseResult];
     'update_cell': [{ db: string, table: string, column: string, value: any, primary_key_col: string, primary_key_val: any }, void];
     'get_columns': [{ db: string, table: string }, ColumnInfo[]]; 
@@ -154,7 +220,7 @@ export type TauriCommands = {
     'explain_query': [{ sql: string }, string];
 
     // Query
-    'execute_query': [{ sql: string, db?: string, options?: QueryOptions }, QueryResult];
+    'execute_query': [{ sql: string, db?: string, options?: QueryOptions }, QueryResult[]];
     'execute_query_html': [{ sql: string, db?: string, options?: QueryOptions }, any];
 
     // Import/Export (Placeholder)
@@ -164,15 +230,24 @@ export type TauriCommands = {
     'get_csv_preview': [{ filePath: string, delimiter: string }, CsvPreview];
     'import_csv': [{ db: string, table: string, filePath: string, options: CsvImportOptions }, number];
 
-    // Relations (Placeholder)
-    'get_foreign_keys': [{ db: string, table: string }, any[]];
-    'add_foreign_key': [{ db: string, table: string, column: string, ref_db: string, ref_table: string, ref_column: string }, void];
-    'drop_foreign_key': [{ db: string, table: string, name: string }, void];
 
-    // Indexes (Placeholder)
-    'get_indexes': [{ db: string, table: string }, any[]];
-    'add_index': [{ db: string, table: string, name: string, columns: string[], type: string }, void];
-    'drop_index': [{ db: string, table: string, name: string }, void];
+
+// ... existing commands ...
+
+    // Relations
+    'get_foreign_keys': [{ db: string, table: string }, ForeignKeyRel[]];
+    'add_foreign_key': [{ 
+        db: string, 
+        table: string, 
+        name?: string,
+        column: string, 
+        ref_db: string, 
+        ref_table: string, 
+        ref_column: string,
+        on_delete: string,
+        on_update: string
+    }, void];
+    'drop_foreign_key': [{ db: string, table: string, name: string }, void];
 
     // Users
     'get_users': [undefined, any[]];
@@ -190,6 +265,27 @@ export type TauriCommands = {
     'get_routine_definition': [{ db: string, name: string, routineType: string }, string];
     'save_routine': [{ db: string, oldName: string, routineType: string, sql: string }, void];
     'drop_routine': [{ db: string, name: string, routineType: string }, void];
+
+    // Triggers
+    'get_triggers': [{ db: string }, TriggerInfo[]];
+    'create_trigger': [{ db: string, name: string, table: string, time: string, event: string, statement: string }, void];
+    'drop_trigger': [{ db: string, name: string }, void];
+
+    // Events
+    'get_events': [{ db: string }, EventInfo[]];
+    'create_event': [{ db: string, name: string, schedule: string, status: string, statement: string }, void];
+    'drop_event': [{ db: string, name: string }, void];
+
+    // Indexes
+    'get_indexes': [{ db: string, table: string }, IndexInfo[]];
+    'add_index': [{ db: string, table: string, indexName: string, columns: string[], indexType: string }, void];
+    'drop_index': [{ db: string, table: string, name: string }, void];
+    
+    // Debug Logger
+    'save_debug_log': [{ log: any }, string];
+    'get_debug_logs': [undefined, any[]];
+    'delete_debug_log': [{ id: string }, void];
+    'clear_all_debug_logs': [undefined, number];
 };
 
 export type CommandName = keyof TauriCommands;
@@ -230,7 +326,14 @@ export interface AIConfig {
 export interface QueryResult {
     columns: string[];
     rows: any[][];
-    affected_rows?: number;
-    last_insert_id?: number;
-    duration?: number;
+    affected_rows: number;
+    last_insert_id: number;
+    duration_ms: number;
+}
+
+export interface ServerStatus {
+    connections: number;
+    bytes_received: number;
+    bytes_sent: number;
+    queries: number;
 }

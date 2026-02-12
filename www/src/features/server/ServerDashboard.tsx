@@ -8,6 +8,7 @@ import {
 import { useAppStore } from '@/stores/useAppStore';
 import { useNotificationStore } from '@/stores/useNotificationStore';
 import { cn } from '@/lib/utils';
+import ServerMonitor from './ServerMonitor';
 
 export function ServerDashboard() {
     const { 
@@ -123,7 +124,7 @@ export function ServerDashboard() {
                 </div>
             ) : dashboardViewMode === 'grid' ? (
                 /* GRID VIEW */
-                <div className="overflow-y-auto pr-2 custom-scrollbar grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-6">
+                <div className="overflow-y-auto pr-2 custom-scrollbar grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-6 flex-1 min-h-0">
                     {filteredDbs.map(db => (
                         <button 
                             key={db.name}

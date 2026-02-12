@@ -1,13 +1,16 @@
 use tauri::State;
 use crate::state::AppState;
-use crate::commands::common::{mysql_to_json, render_table_html};
+use crate::commands::common::mysql_to_json;
 use mysql_async::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
-pub struct QueryResult {
+pub struct QueryResponse {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<serde_json::Value>>,
+    pub affected_rows: u64,
+    pub last_insert_id: u64,
+    pub duration_ms: f64,
 }
 
 #[derive(Serialize)]
@@ -27,7 +30,7 @@ pub struct QueryOptions {
 }
 
 #[tauri::command]
-pub async fn execute_query(sql: String, db: Option<String>, options: Option<QueryOptions>, state: State<'_, AppState>) -> Result<QueryResult, String> {
+pub async fn execute_query(sql: String, db: Option<String>, options: Option<QueryOptions>, state: State<'_, AppState>) -> Result<Vec<QueryResponse>, String> {
     let pool = {
         let pool_guard = state.pool.lock().unwrap();
         pool_guard.as_ref().cloned().ok_or("Not connected")?
@@ -50,15 +53,22 @@ pub async fn execute_query(sql: String, db: Option<String>, options: Option<Quer
         conn.query_drop("START TRANSACTION").await.map_err(|e| e.to_string())?;
     }
 
-    let mut result = conn.query_iter(&sql).await.map_err(|e| format!("SQL Error: {}", e))?;
-    let mut columns = Vec::new();
-    if let Some(col_slice) = result.columns() {
+    let start_set = std::time::Instant::now();
+    // Use query_iter to get the first result set
+    let mut query_result = conn.query_iter(&sql).await.map_err(|e| format!("SQL Error: {}", e))?;
+
+    let mut columns: Vec<String> = Vec::new();
+    if let Some(col_slice) = query_result.columns() {
         for col in col_slice.iter() {
             columns.push(col.name_str().into_owned());
         }
     }
 
-    let rows_data: Vec<mysql_async::Row> = result.collect().await.map_err(|e| e.to_string())?;
+    let affected_rows = query_result.affected_rows();
+    let last_insert_id = query_result.last_insert_id().unwrap_or(0);
+
+    // Collect rows for this set
+    let rows_data: Vec<mysql_async::Row> = query_result.collect().await.map_err(|e| e.to_string())?;
     let mut final_rows = Vec::new();
 
     for row in rows_data {
@@ -69,6 +79,20 @@ pub async fn execute_query(sql: String, db: Option<String>, options: Option<Quer
         }
         final_rows.push(row_values);
     }
+
+    // Capture duration for this set
+    let duration = start_set.elapsed().as_secs_f64() * 1000.0;
+
+    // TODO: Support multiple result sets. mysql_async 0.34 changes iteration logic significantly.
+    // For now we return the first result set.
+    
+    let results = vec![QueryResponse {
+        columns,
+        rows: final_rows,
+        affected_rows,
+        last_insert_id,
+        duration_ms: duration,
+    }];
     
     if opts.rollback.unwrap_or(false) {
         conn.query_drop("ROLLBACK").await.map_err(|e| e.to_string())?;
@@ -78,28 +102,24 @@ pub async fn execute_query(sql: String, db: Option<String>, options: Option<Quer
          conn.query_drop("SET FOREIGN_KEY_CHECKS = 1").await.map_err(|e| e.to_string())?;
     }
 
-    Ok(QueryResult {
-        columns,
-        rows: final_rows,
-    })
+    Ok(results)
 }
 
 #[tauri::command]
 pub async fn execute_query_html(sql: String, db: Option<String>, state: State<'_, AppState>) -> Result<QueryResultHtml, String> {
     let start = std::time::Instant::now();
-    // We call the logic directly or reuse the command if allowed, but since we are in same module, we can call the function if we didn't use State wrapper or just inline logic. 
-    // Calling execute_query(..., state) works because it is just a function.
-    let res = execute_query(sql, db, None, state).await?;
-    let duration = start.elapsed().as_secs_f64();
     
-    let (head_html, body_html) = render_table_html(&res.columns, &res.rows);
+    let results = execute_query(sql, db, None, state).await?;
+    let main_result = results.get(0).ok_or("No results returned")?;
+    
+    let (head, body) = crate::commands::common::render_table_html(&main_result.columns, &main_result.rows);
     
     Ok(QueryResultHtml {
-        head_html,
-        body_html,
-        pagination_html: String::new(),
-        count: res.rows.len(),
-        total_rows: res.rows.len() as u64,
-        query_time: duration,
+        head_html: head,
+        body_html: body,
+        pagination_html: "".to_string(),
+        count: main_result.rows.len(),
+        total_rows: main_result.rows.len() as u64,
+        query_time: start.elapsed().as_secs_f64() * 1000.0,
     })
 }

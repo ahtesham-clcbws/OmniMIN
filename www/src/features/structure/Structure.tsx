@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Table2, Plus, Eye, Trash2, Eraser, Key, ArrowLeft, Search } from 'lucide-react';
+import { Loader2, Table2, Plus, Eye, Trash2, Eraser, Key, ArrowLeft, Search, Link as LinkIcon } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { dbApi } from '@/api/db';
 import { showToast } from '@/utils/ui';
@@ -15,6 +16,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ConfirmDropModal } from './ConfirmDropModal';
+import { AlterColumnModal } from './AlterColumnModal';
+import { InsertRowModal } from './InsertRowModal';
+import { MaintenanceResultsModal } from './MaintenanceResultsModal';
+import { RelationsModal } from './RelationsModal';
+import { Indexes } from './Indexes';
+import { invoke } from '@tauri-apps/api/core';
 
 export function Structure() {
     const { 
@@ -22,10 +29,31 @@ export function Structure() {
         tableViewMode, // Use global toggle state
         currentTable, setCurrentTable // Use global currentTable
     } = useAppStore();
+    const navigate = useNavigate();
+    const { serverId } = useParams();
     const queryClient = useQueryClient();
     // const [currentTable, setCurrentTable] = React.useState<string | null>(null); // Removed local state
     const [selectedTables, setSelectedTables] = React.useState<string[]>([]);
     const [searchTerm, setSearchTerm] = React.useState('');
+
+    // --- Modal State ---
+    const [showInsertModal, setShowInsertModal] = useState(false);
+    const [relationsModalOpen, setRelationsModalOpen] = useState(false);
+    const [alterModal, setAlterModal] = React.useState<{ isOpen: boolean, mode: 'ADD' | 'MODIFY', columnData?: any }>({
+        isOpen: false, mode: 'ADD'
+    });
+
+    // --- Column Mutations ---
+    const dropColumnMutation = useMutation({
+        mutationFn: async (column: string) => {
+            return invoke('drop_column', { db: currentDb, table: currentTable, column });
+        },
+        onSuccess: () => {
+            showToast('Column dropped successfully', 'success');
+            queryClient.invalidateQueries({ queryKey: ['structure', currentDb, currentTable] });
+        },
+        onError: (err) => showToast(String(err), 'error')
+    });
 
     // FETCH: List Tables
     const { data: allTables, isLoading: loadingTables } = useQuery({
@@ -49,7 +77,15 @@ export function Structure() {
         queryKey: ['structure', currentDb, currentTable],
         queryFn: async () => {
             const res = await dbApi.executeQuery(currentDb!, `DESCRIBE \`${currentTable}\``);
-            return res.rows;
+            // Transform array rows to object for InsertRowModal
+            return res[0].rows.map((r: any[]) => ({
+                Field: r[0],
+                Type: r[1],
+                Null: r[2],
+                Key: r[3],
+                Default: r[4],
+                Extra: r[5]
+            }));
         },
         enabled: !!currentDb && !!currentTable
     });
@@ -104,8 +140,7 @@ export function Structure() {
         }
     };
 
-    const maintenanceResultsInit = null;
-    const [maintenanceResults, setMaintenanceResults] = React.useState<{ op: string, data: any[][] } | null>(maintenanceResultsInit);
+    const [maintenanceResults, setMaintenanceResults] = React.useState<{ op: string, data: any[][] } | null>(null);
 
     // --- Modal State ---
     const [dropModal, setDropModal] = React.useState<{ isOpen: boolean, tables: string[], type: 'DROP' | 'TRUNCATE' }>({ 
@@ -206,49 +241,117 @@ export function Structure() {
     // RENDER: TABLE STRUCTURE (Columns Detail View)
     if (currentTable) {
         return (
-            <div className="flex flex-col h-full overflow-hidden">
-                <div className="h-14 border-b border-border bg-surface/50 flex items-center px-4 gap-4 flex-shrink-0">
-                    <button onClick={() => setCurrentTable(null)} className="p-2 hover:bg-white/10 rounded-md text-text-muted hover:text-text-main transition-colors">
-                        <ArrowLeft size={16} />
-                    </button>
-                    <div className="flex items-center gap-2">
-                        <Table2 className="text-primary" size={18} />
-                        <h1 className="font-bold text-lg">{currentTable}</h1>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-border/50 text-text-muted">Columns</span>
+            <>
+                <div className="flex flex-col h-full overflow-hidden">
+                    <div className="h-14 border-b border-border bg-surface/50 flex items-center px-4 gap-4 flex-shrink-0 justify-between">
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => navigate(`/server/${serverId}/${currentDb}`)} className="p-2 hover:bg-white/10 rounded-md text-text-muted hover:text-text-main transition-colors">
+                                <ArrowLeft size={16} />
+                            </button>
+                            <div className="flex items-center gap-2">
+                                <Table2 className="text-primary" size={18} />
+                                <h1 className="font-bold text-lg">{currentTable}</h1>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-border/50 text-text-muted">Columns</span>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                             <button
+                                className="bg-primary/20 text-primary hover:bg-primary/30 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-2 transition-colors border border-primary/20"
+                                onClick={() => setShowInsertModal(true)}
+                            >
+                                <Plus size={14} /> Insert Row
+                            </button>
+                            <button 
+                                className="bg-primary/20 text-primary hover:bg-primary/30 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-2 transition-colors border border-primary/20"
+                                onClick={() => setAlterModal({ isOpen: true, mode: 'ADD' })}
+                            >
+                                <Plus size={14} /> Add Column
+                            </button>
+                            <button 
+                                className="bg-primary/20 text-primary hover:bg-primary/30 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-2 transition-colors border border-primary/20"
+                                onClick={() => setRelationsModalOpen(true)}
+                            >
+                                <LinkIcon size={14} /> Relation View
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-auto p-0">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="sticky top-0 z-10 bg-surface border-b border-border">
+                                <tr className="text-xs uppercase font-bold text-text-muted tracking-wide">
+                                    <th className="p-4 w-48">Name</th>
+                                    <th className="p-4 w-32">Type</th>
+                                    <th className="p-4 w-32">Collation</th>
+                                    <th className="p-4 w-24">Null</th>
+                                    <th className="p-4 w-24">Key</th>
+                                    <th className="p-4 w-32">Default</th>
+                                    <th className="p-4">Extra</th>
+                                    <th className="p-4 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border/30">
+                                {loadingStructure ? (
+                                    <tr><td colSpan={8} className="p-8 text-center"><Loader2 className="animate-spin inline mr-2" /> Loading structure...</td></tr>
+                                ) : columns?.map((col: any, i: number) => (
+                                    <tr key={i} className="hover:bg-white/5 transition-colors group">
+                                        <td className="p-4 font-mono font-bold text-primary">{col.Field}</td>
+                                        <td className="p-4 font-mono text-sm text-yellow-400/80">{col.Type}</td>
+                                        <td className="p-4 text-xs opacity-50">{col.Collation || '-'}</td>
+                                        <td className="p-4 text-xs opacity-50">{col.Null}</td>
+                                        <td className="p-4 text-xs font-bold text-blue-400">{col.Key}</td>
+                                        <td className="p-4 text-xs opacity-50 font-mono">{col.Default || 'NULL'}</td>
+                                        <td className="p-4 text-xs opacity-50 italic">{col.Extra}</td>
+                                        <td className="p-4 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                                             <div className="flex justify-end gap-2">
+                                                <button 
+                                                    className="p-1.5 hover:bg-blue-500/10 text-blue-400 rounded"
+                                                    onClick={() => setAlterModal({ 
+                                                        isOpen: true, 
+                                                        mode: 'MODIFY', 
+                                                        columnData: { 
+                                                            field: col.Field, 
+                                                            data_type: col.Type, 
+                                                            collation: col.Collation,
+                                                            null: col.Null,
+                                                            key: col.Key,
+                                                            default: col.Default,
+                                                            extra: col.Extra
+                                                        } 
+                                                    })}
+                                                >
+                                                    <Eraser size={14} />
+                                                </button>
+                                                <button 
+                                                    className="p-1.5 hover:bg-red-500/10 text-red-400 rounded"
+                                                    onClick={() => {
+                                                        if (confirm(`Are you sure you want to drop column '${col.Field}'?`)) {
+                                                            dropColumnMutation.mutate(col.Field);
+                                                        }
+                                                    }}
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                             </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div className="p-4 border-t border-border bg-surface/30">
+                         <Indexes table={currentTable} />
                     </div>
                 </div>
-
-                <div className="flex-1 overflow-auto p-0">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="sticky top-0 z-10 bg-surface border-b border-border">
-                            <tr className="text-xs uppercase font-bold text-text-muted tracking-wide">
-                                <th className="p-4 w-48">Name</th>
-                                <th className="p-4 w-32">Type</th>
-                                <th className="p-4 w-32">Collation</th>
-                                <th className="p-4 w-24">Null</th>
-                                <th className="p-4 w-24">Key</th>
-                                <th className="p-4 w-32">Default</th>
-                                <th className="p-4">Extra</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/30">
-                            {loadingStructure ? (
-                                <tr><td colSpan={7} className="p-8 text-center"><Loader2 className="animate-spin inline mr-2" /> Loading structure...</td></tr>
-                            ) : columns?.map((col: any[], i: number) => (
-                                <tr key={i} className="hover:bg-white/5 transition-colors">
-                                    <td className="p-4 font-mono font-bold text-primary">{col[0]}</td>
-                                    <td className="p-4 font-mono text-sm text-yellow-400/80">{col[1]}</td>
-                                    <td className="p-4 text-xs opacity-50">{col[2] || '-'}</td>
-                                    <td className="p-4 text-xs opacity-50">{col[3]}</td>
-                                    <td className="p-4 text-xs font-bold text-blue-400">{col[4]}</td>
-                                    <td className="p-4 text-xs opacity-50 font-mono">{col[5] || 'NULL'}</td>
-                                    <td className="p-4 text-xs opacity-50 italic">{col[6]}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+                <AlterColumnModal 
+                    isOpen={alterModal.isOpen}
+                    onClose={() => setAlterModal(prev => ({ ...prev, isOpen: false }))}
+                    mode={alterModal.mode}
+                    table={currentTable}
+                    columnData={alterModal.columnData}
+                />
+            </>
         )
     }
 
@@ -320,7 +423,7 @@ export function Structure() {
                                     </td>
                                     <td className="p-3 w-1/4 font-mono font-bold text-primary truncate">
                                         <div 
-                                            onClick={() => { setCurrentTable(t.name); }} 
+                                            onClick={() => navigate(`/server/${serverId}/${currentDb}/table/${t.name}`)} 
                                             className="hover:underline flex items-center gap-2 truncate w-full cursor-pointer select-none"
                                             role="button"
                                             tabIndex={0}
@@ -341,7 +444,7 @@ export function Structure() {
                                                     <TooltipTrigger asChild>
                                                         <button
                                                             className="p-1.5 hover:bg-white/10 rounded text-primary"
-                                                            onClick={() => setCurrentTable(t.name)}
+                                                            onClick={() => navigate(`/server/${serverId}/${currentDb}/table/${t.name}/structure`)}
                                                         >
                                                             <Eye size={14} />
                                                         </button>
@@ -353,10 +456,7 @@ export function Structure() {
                                                     <TooltipTrigger asChild>
                                                         <button
                                                             className="p-1.5 hover:bg-white/10 rounded text-green-400"
-                                                            onClick={() => {
-                                                                setCurrentTable(t.name);
-                                                                window.location.hash = `/server/${currentServer?.id}/${currentDb}/table/${t.name}`;
-                                                            }}
+                                                            onClick={() => navigate(`/server/${serverId}/${currentDb}/table/${t.name}`)}
                                                         >
                                                             <Table2 size={14} />
                                                         </button>
@@ -411,7 +511,7 @@ export function Structure() {
                             {tables?.map((t) => (
                                 <div 
                                     key={t.name}
-                                    onClick={() => setCurrentTable(t.name)}
+                                    onClick={() => navigate(`/server/${serverId}/${currentDb}/table/${t.name}`)}
                                     className="glass-panel p-4 hover:border-primary/50 cursor-pointer group transition-all hover:bg-white/5 flex flex-col gap-3 relative"
                                 >
                                     <div className="flex items-start justify-between">
@@ -510,6 +610,51 @@ export function Structure() {
                 type={dropModal.type}
                 isPending={dropTableMutation.isPending || truncateTableMutation.isPending || bulkActionMutation.isPending}
             />
+
+            {/* Alter Column Modal */}
+            <AlterColumnModal
+                isOpen={alterModal.isOpen}
+                onClose={() => setAlterModal({ ...alterModal, isOpen: false })}
+                table={currentTable!}
+                mode={alterModal.mode}
+                columnData={alterModal.columnData}
+                onSuccess={() => {
+                   queryClient.invalidateQueries({ queryKey: ['structure', currentDb, currentTable] });
+                }}
+            />
+
+            {/* Relations Modal */}
+            {currentDb && currentTable && (
+                <RelationsModal
+                    isOpen={relationsModalOpen}
+                    onClose={() => setRelationsModalOpen(false)}
+                    db={currentDb}
+                    table={currentTable}
+                />
+            )}
+
+             {/* Insert Row Modal */}
+             <InsertRowModal
+                isOpen={showInsertModal}
+                onClose={() => setShowInsertModal(false)}
+                db={currentDb!}
+                table={currentTable!}
+                columns={columns || []}
+                onSuccess={() => {
+                    showToast('Rows inserted successfully', 'success');
+                     // If we had a browse view query to invalidate, we would do it here
+                }}
+            />
+
+             {/* Maintenance Results Modal */}
+             {maintenanceResults ? (
+                 <MaintenanceResultsModal
+                    isOpen={true}
+                    onClose={() => setMaintenanceResults(null)}
+                    op={(maintenanceResults as any).op}
+                    results={(maintenanceResults as any).data}
+                 />
+             ) : null}
         </div>
     );
 }

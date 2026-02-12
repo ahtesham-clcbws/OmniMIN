@@ -20,6 +20,41 @@ export function CreateDatabaseModal({ onClose, onCreated }: CreateDatabaseModalP
         queryFn: dbApi.getCollations
     });
 
+    // Set default collation based on availability
+    React.useEffect(() => {
+        if (collations && collations.length > 0 && !collation) {
+            // Priority: utf8mb4_bin, utf8mb4_general_ci, utf8mb4_unicode_ci, any utf8mb4, then utf8
+            const preferred = [
+                'utf8mb4_bin',
+                'utf8mb4_general_ci',
+                'utf8mb4_unicode_ci',
+                'utf8mb4_unicode_520_ci'
+            ];
+
+            // 1. Check for exact preferred matches
+            for (const p of preferred) {
+                if (collations.includes(p)) {
+                    setCollation(p);
+                    return;
+                }
+            }
+
+            // 2. Check for anything utf8mb4
+            const anyUtf8mb4 = collations.find(c => c.startsWith('utf8mb4_'));
+            if (anyUtf8mb4) {
+                setCollation(anyUtf8mb4);
+                return;
+            }
+
+            // 3. Check for anything utf8
+            const anyUtf8 = collations.find(c => c.startsWith('utf8_'));
+            if (anyUtf8) {
+                setCollation(anyUtf8);
+                return;
+            }
+        }
+    }, [collations]);
+
     const handleCreate = async () => {
         if (!name) {
             setError("Database name is required.");

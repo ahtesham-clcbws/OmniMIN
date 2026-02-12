@@ -18,6 +18,42 @@ pub struct AppPreferences {
     pub performance_monitoring: bool,
     pub show_performance_overlay: bool,
     pub log_level: String,
+    
+    // AI Settings
+    pub ai_config: AIConfig,
+    
+    // Export Templates
+    pub export_templates: Vec<ExportTemplate>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExportTemplate {
+    pub id: String,
+    pub name: String,
+    pub options: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AIConfig {
+    pub provider: String, // "openai" | "ollama" | "gemini" | "disabled"
+    pub api_key: Option<String>,
+    pub model: String,
+    pub endpoint: Option<String>, // For Ollama
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
+}
+
+impl Default for AIConfig {
+    fn default() -> Self {
+        Self {
+            provider: "ollama".to_string(), // Default to local privacy-first
+            api_key: None,
+            model: "llama3".to_string(),
+            endpoint: Some("http://localhost:11434".to_string()),
+            temperature: Some(0.3),
+            max_tokens: Some(2048),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -41,6 +77,9 @@ impl Default for AppPreferences {
             performance_monitoring: false,
             show_performance_overlay: false,
             log_level: "info".to_string(),
+            // AI defaults
+            ai_config: AIConfig::default(),
+            export_templates: vec![],
         }
     }
 }

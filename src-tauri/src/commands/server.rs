@@ -30,6 +30,25 @@ pub struct StatusVar {
     pub value: String,
 }
 
+#[derive(Serialize)]
+pub struct Charset {
+    pub charset: String,
+    pub description: String,
+    pub default_collation: String,
+    pub maxlen: u32,
+}
+
+#[derive(Serialize)]
+pub struct Collation {
+    pub collation: String,
+    pub charset: String,
+    pub id: u32,
+    pub is_default: String,
+    pub is_compiled: String,
+    pub sortlen: u32,
+}
+
+
 #[tauri::command]
 pub async fn get_saved_servers(app_handle: AppHandle) -> Result<Vec<ServerConfig>, String> {
     let path = app_handle.path().app_config_dir().unwrap().join(SERVERS_FILE);
@@ -124,7 +143,7 @@ pub fn get_saved_servers_local(app_handle: tauri::AppHandle) -> Result<Vec<Saved
     }
     
     let content = fs::read_to_string(servers_path).map_err(|e| e.to_string())?;
-    let servers: Vec<SavedServer> = serde_json::from_str(&content).unwrap_or_default();
+    let servers: Vec<SavedServer> = serde_json::from_str(&content).map_err(|e| format!("Failed to parse servers.json: {}", e))?;
     
     Ok(servers)
 }
@@ -336,3 +355,50 @@ pub async fn get_monitor_data(state: State<'_, AppState>) -> Result<MonitorData,
 
     Ok(data)
 }
+
+#[tauri::command]
+pub async fn get_charsets(state: State<'_, AppState>) -> Result<Vec<Charset>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.as_ref().cloned().ok_or("Not connected")?
+    };
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    
+    let rows: Vec<mysql_async::Row> = conn.query("SHOW CHARSET").await.map_err(|e| e.to_string())?;
+    
+    let charsets = rows.into_iter().map(|r| {
+        Charset {
+            charset: r.get(0).unwrap_or_default(),
+            description: r.get(1).unwrap_or_default(),
+            default_collation: r.get(2).unwrap_or_default(),
+            maxlen: r.get(3).unwrap_or(1),
+        }
+    }).collect();
+    
+    Ok(charsets)
+}
+
+#[tauri::command]
+pub async fn get_collations_full(state: State<'_, AppState>) -> Result<Vec<Collation>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.as_ref().cloned().ok_or("Not connected")?
+    };
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    
+    let rows: Vec<mysql_async::Row> = conn.query("SHOW COLLATION").await.map_err(|e| e.to_string())?;
+    
+    let collations = rows.into_iter().map(|r| {
+        Collation {
+            collation: r.get(0).unwrap_or_default(),
+            charset: r.get(1).unwrap_or_default(),
+            id: r.get(2).unwrap_or(0),
+            is_default: r.get(3).unwrap_or_default(),
+            is_compiled: r.get(4).unwrap_or_default(),
+            sortlen: r.get(5).unwrap_or(1),
+        }
+    }).collect();
+    
+    Ok(collations)
+}
+

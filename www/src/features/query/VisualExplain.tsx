@@ -73,7 +73,7 @@ export function VisualExplain({ sql, db }: VisualExplainProps) {
     // 1. Fetch Explain Data
     const { data: explainData, isLoading, error } = useQuery({
         queryKey: ['explain', db, sql],
-        queryFn: () => dbApi.executeQuery(`EXPLAIN ${sql}`, db),
+        queryFn: () => dbApi.executeQuery(db || '', `EXPLAIN ${sql}`),
         enabled: !!sql,
         staleTime: 0, // Always fresh
     });

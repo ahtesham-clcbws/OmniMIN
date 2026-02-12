@@ -24,6 +24,8 @@ pub fn run() {
             commands::server::get_status_variables,
             commands::server::get_server_variables,
             commands::server::get_monitor_data,
+            commands::server::get_charsets,
+            commands::server::get_collations_full,
 
             // Search
             commands::search::global_search,
@@ -45,12 +47,18 @@ pub fn run() {
             commands::table::browse_table_html,
             commands::table::browse_table,
             commands::table::update_cell,
+            commands::table::update_row,
             commands::table::get_columns,
             commands::table::get_table_count,
             commands::table::rename_table,
             commands::table::truncate_table,
             commands::table::copy_table,
             commands::table::table_maintenance,
+            commands::table::add_column,
+            commands::table::modify_column,
+            commands::table::drop_column,
+            commands::table::insert_rows,
+            commands::table::delete_rows,
 
             // Query
             commands::server::get_saved_servers_local,
@@ -111,10 +119,18 @@ pub fn run() {
             commands::preferences::load_preferences,
             commands::preferences::save_preferences,
             // AI
-            commands::ai::get_ai_config,
-            commands::ai::save_ai_config,
             commands::ai::generate_sql,
-            commands::ai::explain_query
+            commands::ai::explain_query,
+            commands::ai::get_ai_models,
+
+            // Monitor
+            commands::monitor::get_server_status,
+            
+            // Debug Logger
+            commands::debug_logger::save_debug_log,
+            commands::debug_logger::get_debug_logs,
+            commands::debug_logger::delete_debug_log,
+            commands::debug_logger::clear_all_debug_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

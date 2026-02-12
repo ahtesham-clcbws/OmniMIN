@@ -144,9 +144,7 @@ export function Sidebar() {
                                             key={r.name}
                                             className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer select-none transition-colors text-[11px] font-mono text-text-muted hover:bg-white/5 hover:text-text-main"
                                             onClick={() => {
-                                                navigate(`/server/${serverId}/${currentDb}`);
-                                                // We might want a specific route for routines later, but for now we go to DB root which has Routines tab
-                                                setView('structure'); // Or routines if we had a view in store
+                                                navigate(`/server/${serverId}/${currentDb}/routines`);
                                             }}
                                         >
                                             <div className={cn(

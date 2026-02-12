@@ -1,164 +1,203 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Code, Trash2, Play, FileCode, Plus } from 'lucide-react';
 import { dbApi } from '@/api/db';
-import { useAppStore } from '@/stores/useAppStore';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Plus, Trash2, Edit, FileCode, Check, Copy } from 'lucide-react';
 import { showToast } from '@/utils/ui';
 import { cn } from '@/lib/utils';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { useAppStore } from '@/stores/useAppStore';
+
+interface RoutinesProps {
+    db: string;
+}
 
 export function Routines() {
     const { currentDb } = useAppStore();
     const queryClient = useQueryClient();
-    const [viewingRoutine, setViewingRoutine] = React.useState<{name: string, type: 'PROCEDURE' | 'FUNCTION'} | null>(null);
-    const [editedSql, setEditedSql] = React.useState<string>('');
-    const [isEditing, setIsEditing] = React.useState(false);
+    const [editorOpen, setEditorOpen] = useState(false);
+    
+    // Editor State
+    const [editMode, setEditMode] = useState<'CREATE' | 'EDIT'>('CREATE');
+    const [originalName, setOriginalName] = useState('');
+    const [routineType, setRoutineType] = useState<'PROCEDURE' | 'FUNCTION'>('PROCEDURE');
+    const [editorSql, setEditorSql] = useState('');
+    const [routineName, setRoutineName] = useState(''); // Only for CREATE display helpfulness, not strictly used in save if SQL is manual
 
-    const { data: routines, isLoading: loadingRoutines } = useQuery({
+    const { data: routines, isLoading } = useQuery({
         queryKey: ['routines', currentDb],
         queryFn: () => dbApi.getRoutines(currentDb!),
         enabled: !!currentDb
     });
 
-    const { data: definition, isLoading: loadingDefinition } = useQuery({
-        queryKey: ['routine-definition', currentDb, viewingRoutine?.name],
-        queryFn: async () => {
-            const def = await dbApi.getRoutineDefinition(currentDb!, viewingRoutine!.name, viewingRoutine!.type);
-            setEditedSql(def);
-            return def;
-        },
-        enabled: !!currentDb && !!viewingRoutine
-    });
-
     const saveMutation = useMutation({
-        mutationFn: () => dbApi.saveRoutine(currentDb!, viewingRoutine?.name || '', viewingRoutine!.type, editedSql),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['routines', currentDb] });
-            showToast('Routine saved successfully');
-            setIsEditing(false);
-            setViewingRoutine(null);
+        mutationFn: async () => {
+             // Basic validation
+             if(!editorSql.trim()) throw new Error("SQL cannot be empty");
+             return dbApi.saveRoutine(currentDb!, editMode === 'EDIT' ? originalName : '', routineType, editorSql);
         },
-        onError: (err) => showToast('Failed to save routine: ' + err)
+        onSuccess: () => {
+            showToast(`Routine ${editMode === 'CREATE' ? 'created' : 'updated'}`, 'success');
+            setEditorOpen(false);
+            queryClient.invalidateQueries({ queryKey: ['routines', currentDb] });
+        },
+        onError: (e) => showToast(String(e), 'error')
     });
 
     const dropMutation = useMutation({
-        mutationFn: ({ name, type }: { name: string, type: 'PROCEDURE' | 'FUNCTION' }) => 
-            dbApi.dropRoutine(currentDb!, name, type),
+        mutationFn: async ({ name, type }: { name: string, type: string }) => {
+            return dbApi.dropRoutine(currentDb!, name, type as any);
+        },
         onSuccess: () => {
-             queryClient.invalidateQueries({ queryKey: ['routines', currentDb] });
-             showToast('Routine dropped successfully');
-        }
+            showToast('Routine dropped', 'success');
+            queryClient.invalidateQueries({ queryKey: ['routines', currentDb] });
+        },
+        onError: (e) => showToast(String(e), 'error')
     });
 
     const handleCreate = () => {
-        setViewingRoutine({ name: '', type: 'PROCEDURE' });
-        setEditedSql('CREATE PROCEDURE `new_procedure`()\nBEGIN\n\t-- Routine body\nEND');
-        setIsEditing(true);
+        setEditMode('CREATE');
+        setOriginalName('');
+        setRoutineType('PROCEDURE');
+        setEditorSql(`CREATE PROCEDURE \`new_procedure\`()\nBEGIN\n    -- Your code here\n    SELECT 1;\nEND`);
+        setEditorOpen(true);
     };
 
-    if (!currentDb) return <div className="p-8 text-center opacity-50">Select a database</div>;
+    const handleEdit = async (r: any) => {
+        try {
+            const def = await dbApi.getRoutineDefinition(currentDb!, r.name, r.routine_type);
+            setEditMode('EDIT');
+            setOriginalName(r.name);
+            setRoutineType(r.routine_type);
+            setEditorSql(def);
+            setEditorOpen(true);
+        } catch (e) {
+            showToast("Failed to fetch definition", "error");
+        }
+    };
+
+    if (!currentDb) return null;
 
     return (
-        <div className="flex flex-col h-full bg-canvas/30">
-            <div className="h-14 border-b border-white/5 flex items-center px-6 justify-between bg-black/20">
+        <div className="h-full flex flex-col">
+            <div className="flex-none p-4 border-b border-border bg-surface/50 flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                    <Code className="text-primary w-5 h-5" />
-                    <h1 className="text-lg font-bold">Stored Routines</h1>
+                    <FileCode className="text-purple-400" />
+                    <h2 className="text-lg font-bold">Routines</h2>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-border/50 text-text-muted">{routines?.length || 0}</span>
                 </div>
-                <button className="btn-secondary h-8 text-[11px]" onClick={handleCreate}>
-                    <Plus size={14} className="mr-1" /> Create Routine
-                </button>
+                <Button size="sm" onClick={handleCreate}>
+                    <Plus className="w-4 h-4 mr-2" /> Create Routine
+                </Button>
             </div>
 
-            <div className="flex-1 overflow-auto p-6 space-y-6">
-                <div className="glass-panel overflow-hidden">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="border-b border-border bg-hover-bg text-[10px] uppercase tracking-wider text-text-muted font-bold">
-                                <th className="p-4">Name</th>
-                                <th className="p-4">Type</th>
-                                <th className="p-4">Returns</th>
-                                <th className="p-4">Created</th>
-                                <th className="p-4 text-right px-6">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {loadingRoutines ? (
-                                <tr><td colSpan={5} className="p-12 text-center opacity-50"><Loader2 className="animate-spin inline mr-2"/> Loading routines...</td></tr>
-                            ) : routines?.length === 0 ? (
-                                <tr><td colSpan={5} className="p-12 text-center opacity-30 text-xs italic">No routines found in this database.</td></tr>
-                            ) : routines?.map((r) => (
-                                <tr key={r.name} className="border-b border-white/5 hover:bg-white/5 transition-colors group">
-                                    <td className="p-4 font-mono font-bold text-primary text-sm">{r.name}</td>
-                                    <td className="p-4">
+            <div className="flex-1 overflow-auto p-4">
+                {isLoading ? (
+                    <div className="text-center p-8 opacity-50">Loading routines...</div>
+                ) : routines?.length === 0 ? (
+                    <div className="text-center p-12 border border-dashed border-border rounded-lg text-text-muted">
+                        No routines found in this database.
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {routines?.map((r: any) => (
+                            <div key={r.name} className="glass-panel p-4 flex flex-col gap-3 group relative hover:border-purple-400/30 transition-colors">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-2">
                                         <span className={cn(
-                                            "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase",
-                                            r.routine_type === 'PROCEDURE' ? "bg-blue-500/10 text-blue-400" : "bg-purple-500/10 text-purple-400"
-                                        )}>{r.routine_type}</span>
-                                    </td>
-                                    <td className="p-4 text-xs font-mono opacity-50">{r.data_type || '-'}</td>
-                                    <td className="p-4 text-xs opacity-40">{r.created}</td>
-                                    <td className="p-4 px-6 flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button 
+                                            "text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider",
+                                            r.routine_type === 'PROCEDURE' ? "bg-blue-500/20 text-blue-400" : "bg-green-500/20 text-green-400"
+                                        )}>
+                                            {r.routine_type.substring(0, 4)}
+                                        </span>
+                                        <h3 className="font-bold text-primary truncate" title={r.name}>{r.name}</h3>
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-purple-400" onClick={() => handleEdit(r)}>
+                                            <Edit size={14} />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-red-400" 
                                             onClick={() => {
-                                                setViewingRoutine({ name: r.name, type: r.routine_type as any });
-                                                setIsEditing(true);
+                                                if(confirm(`Drop ${r.routine_type} '${r.name}'?`)) dropMutation.mutate({ name: r.name, type: r.routine_type });
                                             }}
-                                            className="p-1.5 hover:bg-white/10 rounded-md text-primary" 
-                                            title="Edit Definition"
                                         >
-                                            <FileCode size={16} />
-                                        </button>
-                                        <button className="p-1.5 hover:bg-white/10 rounded-md text-green-500" title="Execute">
-                                            <Play size={16} />
-                                        </button>
-                                        <button 
-                                            onClick={() => { if(confirm(`Drop ${r.routine_type} ${r.name}?`)) dropMutation.mutate({ name: r.name, type: r.routine_type as any }); }}
-                                            className="p-1.5 hover:bg-white/10 rounded-md text-red-500" 
-                                            title="Drop"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                {isEditing && (
-                    <div className="glass-panel p-6 space-y-4 border-primary/20 bg-primary/[0.02]">
-                        <div className="flex justify-between items-center">
-                            <h2 className="text-sm font-bold flex items-center gap-2">
-                                <Code size={14} className="text-primary" />
-                                {viewingRoutine?.name ? `Editing ${viewingRoutine.type}: ${viewingRoutine.name}` : `Create New Routine`}
-                            </h2>
-                            <div className="flex gap-2">
-                                <button 
-                                    onClick={() => saveMutation.mutate()} 
-                                    className="btn-primary h-7 text-[10px]"
-                                    disabled={saveMutation.isPending}
-                                >
-                                    {saveMutation.isPending ? <Loader2 className="animate-spin w-3 h-3 mr-1"/> : null}
-                                    Save Routine
-                                </button>
-                                <button onClick={() => setIsEditing(false)} className="text-[10px] uppercase font-bold opacity-50 hover:opacity-100">Cancel</button>
+                                            <Trash2 size={14} />
+                                        </Button>
+                                    </div>
+                                </div>
+                                <div className="text-xs text-text-muted opacity-60 flex flex-col gap-1 mt-auto">
+                                    {r.data_type && <div>Returns: <span className="text-yellow-400 font-mono">{r.data_type}</span></div>}
+                                    <div className="flex justify-between">
+                                        <span>Updated: {r.last_altered}</span>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                        <div className="bg-black/40 rounded-lg border border-white/5 p-0 font-mono text-sm overflow-hidden flex flex-col h-[500px]">
-                            {loadingDefinition && viewingRoutine?.name ? (
-                                <div className="p-8 flex items-center gap-2 opacity-40"><Loader2 className="animate-spin w-3 h-3"/> Fetching definition...</div>
-                            ) : (
-                                <textarea 
-                                    className="flex-1 bg-transparent p-4 outline-none resize-none text-white/80 custom-scrollbar"
-                                    value={editedSql}
-                                    onChange={(e) => setEditedSql(e.target.value)}
-                                    spellCheck={false}
-                                />
-                            )}
-                        </div>
+                        ))}
                     </div>
                 )}
             </div>
+
+            <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+                <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>{editMode === 'CREATE' ? 'Create New Routine' : `Edit ${originalName}`}</DialogTitle>
+                    </DialogHeader>
+                    
+                    <div className="flex-1 flex flex-col gap-4 overflow-hidden pt-4">
+                         {editMode === 'CREATE' && (
+                             <div className="flex gap-4">
+                                <Select value={routineType} onValueChange={(v: any) => {
+                                    setRoutineType(v);
+                                    // Update template if it looks like a template
+                                    if (editorSql.includes('CREATE PROCEDURE') || editorSql.includes('CREATE FUNCTION')) {
+                                         if (v === 'FUNCTION') {
+                                             setEditorSql(`CREATE FUNCTION \`new_function\`() RETURNS INT\nBEGIN\n    RETURN 1;\nEND`);
+                                         } else {
+                                             setEditorSql(`CREATE PROCEDURE \`new_procedure\`()\nBEGIN\n    SELECT 1;\nEND`);
+                                         }
+                                    }
+                                }}>
+                                    <SelectTrigger className="w-[180px]">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="PROCEDURE">PROCEDURE</SelectItem>
+                                        <SelectItem value="FUNCTION">FUNCTION</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                             </div>
+                         )}
+
+                         <div className="flex-1 border border-border rounded-md overflow-hidden relative font-mono text-sm bg-black/20">
+                            <textarea 
+                                className="w-full h-full p-4 bg-transparent outline-none resize-none custom-scrollbar"
+                                value={editorSql}
+                                onChange={e => setEditorSql(e.target.value)}
+                                spellCheck={false}
+                            />
+                         </div>
+                         <p className="text-xs text-text-muted opacity-60">
+                             Enter the full CREATE statement. If editing, modify the definition directly. 
+                             The system will handle DROP IF EXISTS for updates.
+                         </p>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4">
+                        <Button variant="ghost" onClick={() => setEditorOpen(false)}>Cancel</Button>
+                        <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+                            {saveMutation.isPending && <Check className="w-4 h-4 mr-2 animate-spin" />}
+                            Save Routine
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

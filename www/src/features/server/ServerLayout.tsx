@@ -4,7 +4,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { 
     Activity, Search, Plus, Settings, MoreHorizontal, 
     LayoutGrid, List as ListIcon, RefreshCcw, Zap, Terminal, Info, User, Key, ChevronRight,
-    Database as DBIcon
+    Database as DBIcon, Type
 } from 'lucide-react';
 import { Breadcrumbs } from '@/components/Navigation/Breadcrumbs';
 import { Button } from '@/components/ui/button';
@@ -91,64 +91,7 @@ function ProcessListModal({ onClose }: { onClose: () => void }) {
     );
 }
 
-function VariablesModal({ type, onClose }: { type: 'status' | 'variables', onClose: () => void }) {
-    const [filter, setFilter] = React.useState('');
-    const { data: variables, isLoading } = useQuery({
-        queryKey: [type, filter],
-        queryFn: () => type === 'status' ? dbApi.getStatusVariables(filter) : dbApi.getServerVariables(filter),
-        refetchInterval: type === 'status' ? 10000 : false 
-    });
 
-    const title = type === 'status' ? 'Global Status Variables' : 'System Variables';
-    const description = type === 'status' 
-        ? 'Real-time throughput and performance counters.' 
-        : 'Server-level system configuration settings.';
-
-    return (
-        <Modal isOpen={true} onClose={onClose} title={title} size="lg">
-            <div className="space-y-4">
-                <div className="flex justify-between items-center mb-2">
-                    <p className="text-xs text-text-muted">{description}</p>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted opacity-40 w-3 h-3 pointer-events-none" />
-                        <input 
-                            type="text" 
-                            placeholder="Filter..." 
-                            className="bg-canvas border border-border rounded-lg pl-8 pr-4 h-7 w-40 text-xs outline-none focus:border-primary/50" 
-                            value={filter}
-                            onChange={(e) => setFilter(e.target.value)}
-                        />
-                    </div>
-                </div>
-
-                <div className="border border-border rounded-lg overflow-hidden bg-canvas max-h-[50vh] overflow-y-auto custom-scrollbar">
-                    <table className="w-full text-left text-xs">
-                        <thead className="bg-surface border-b border-border sticky top-0">
-                            <tr>
-                                <th className="px-4 py-2 font-bold opacity-50 uppercase">Variable Name</th>
-                                <th className="px-4 py-2 font-bold opacity-50 uppercase">Value</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/50">
-                            {isLoading ? (
-                                <tr><td colSpan={2} className="px-4 py-4 text-center opacity-40">Loading...</td></tr>
-                            ) : variables?.length === 0 ? (
-                                <tr><td colSpan={2} className="px-4 py-4 text-center opacity-40">No variables found.</td></tr>
-                            ) : (
-                                variables?.map((v: any) => (
-                                    <tr key={v.variable_name} className="hover:bg-white/5 transition-colors">
-                                        <td className="px-4 py-2 font-mono text-primary/80">{v.variable_name}</td>
-                                        <td className="px-4 py-2 font-mono break-all">{v.value}</td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </Modal>
-    );
-}
 
 // --- Subcomponents for Menu (copied from ServerOverview) ---
 function ServerActionMenu({ onClose, onAction }: { onClose: () => void, onAction: (action: string) => void }) {
@@ -160,6 +103,7 @@ function ServerActionMenu({ onClose, onAction }: { onClose: () => void, onAction
         { id: 'processes', label: 'Show Processes', icon: Terminal, color: 'text-primary' },
         { id: 'variables', label: 'System Variables', icon: Info, color: 'text-purple-400' },
         { id: 'status', label: 'Global Status', icon: Activity, color: 'text-green-400' },
+        { id: 'charsets', label: 'Character Sets', icon: Type, color: 'text-cyan-400' },
         { id: 'users', label: 'User Accounts', icon: User, color: 'text-amber-400' },
         { id: 'rotate_pass', label: 'Rotate My Password', icon: Key, color: 'text-rose-400' },
         { id: 'refresh', label: 'Force Refresh Stats', icon: RefreshCcw, color: 'text-green-400' },
@@ -211,7 +155,6 @@ export function ServerLayout() {
 
     // --- Modal States ---
     const [showProcessList, setShowProcessList] = React.useState(false);
-    const [showVariablesModal, setShowVariablesModal] = React.useState<'status' | 'variables' | null>(null);
     const [showUsersModal, setShowUsersModal] = React.useState(false);
     const [showRotationModal, setShowRotationModal] = React.useState(false);
 
@@ -241,7 +184,7 @@ export function ServerLayout() {
     const [showActionMenu, setShowActionMenu] = React.useState(false);
 
     const flushMutation = useMutation({
-        mutationFn: () => dbApi.executeQuery('FLUSH PRIVILEGES'),
+        mutationFn: () => dbApi.executeQuery('', 'FLUSH PRIVILEGES'),
         onSuccess: () => showNotification('Privileges flushed successfully!', 'success'),
         onError: (err) => showNotification('Failed to flush privileges: ' + err, 'error')
     });
@@ -409,8 +352,9 @@ export function ServerLayout() {
                                              dbApi.executeQuery('', 'FLUSH HOSTS').catch(() => {});
                                         }
                                         if (action === 'processes') setShowProcessList(true);
-                                        if (action === 'variables') setShowVariablesModal('variables');
-                                        if (action === 'status') setShowVariablesModal('status');
+                                        if (action === 'variables') navigate('variables');
+                                        if (action === 'status') navigate('status');
+                                        if (action === 'charsets') navigate('charsets');
                                         if (action === 'users') setShowUsersModal(true);
                                         if (action === 'rotate_pass') setShowRotationModal(true);
                                     }} 
@@ -454,12 +398,7 @@ export function ServerLayout() {
             {showProcessList && (
                 <ProcessListModal onClose={() => setShowProcessList(false)} />
             )}
-            {showVariablesModal && (
-                <VariablesModal
-                    type={showVariablesModal}
-                    onClose={() => setShowVariablesModal(null)}
-                />
-            )}
+
             <UsersManagementModal
                 isOpen={showUsersModal}
                 onClose={() => setShowUsersModal(false)}

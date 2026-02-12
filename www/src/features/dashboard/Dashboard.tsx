@@ -16,18 +16,15 @@ export function Dashboard() {
     const [searchTerm, setSearchTerm] = useState('');
 
     // Fetch Saved Servers
-    const { data: servers, refetch } = useQuery({
+    const { data: servers = [], refetch, error, isError } = useQuery({
         queryKey: ['savedServers'],
         queryFn: dbApi.getSavedServers,
-        initialData: []
+        retry: false
     });
 
     const navigate = useNavigate();
 
     const handleConnect = (server: any) => {
-        setView('dashboard');
-        setCurrentDb(null);
-        setCurrentTable(null);
         navigate(`/server/${server.id}`);
     };
 
@@ -58,6 +55,11 @@ export function Dashboard() {
 
 
                 <div className="flex items-center justify-between mb-8 gap-4">
+                    {isError && (
+                        <div className="w-full bg-red-500/10 border border-red-500/20 text-red-500 p-4 rounded-lg mb-4">
+                            <strong>Error loading servers:</strong> {error instanceof Error ? error.message : String(error)}
+                        </div>
+                    )}
                     <div className="flex items-center gap-4 flex-1">
                         <div className="relative flex-1 max-w-md">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
